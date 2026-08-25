@@ -1,0 +1,8 @@
+node_modules/
+.env
+.DS_Store
+dist/
+build/
+
+# Interview prep notes — personal, not for the repo
+docs/interview-prep.md

@@ -1,0 +1,17 @@
+Spec note
+
+Sickle(Melee)
+Button budget: 6 rotation buttons + 1 mobility skill
+
+1. builder(ST) - Furious Thrust: Brutally stabs the primary target. Generates 1c of Rage
+2. builder(AoE) - Brutal Swing: Cuts every enemy in a 2x3 area in front of the character, based on facing. The sickle has long reach. Generates 0.5c of Rage per target hit
+3. spender(ST) - Overhead Slam: Slams the primary target for heavy damage. Damage scales with combo points spent on a smooth curve - no sharp jump between steps, so holding for 5c should not always be the right call. Exact numbers TBD
+4. spender(AoE) - Whirling Slash: Channeled. Spins in place, cutting the enemies around you. 0.7s duration per combo point, movement allowed while channeling, ticking damage. Also applies a bleed to the primary target
+5. main cd - Market Price Rage: Enraged by crop inflation. All attack power increased by 20%, 1m cd, 15s sustain
+6. mini cd - Tilling: Tears a rift in the ground in the 3x3 area centered on the player. Every enemy in the rift takes 10% increased damage. 30s cd, 15s sustain
+7. mobility - Sprint: Movement speed increased by 30%. Lasts 10 seconds, 20s cd
+
+Notes
+- No target cap on Brutal Swing yet. Known consideration: at 0.5c per target, a large enough pack fills all 5 combo points in a single swing. Revisit during balancing
+- Spreading the bleed to nearby enemies per Whirling Slash tick is a talent tree candidate. Because the bleed rides on the AoE spender, Whirling Slash has a reason to be pressed in single target too
+- Rage is stored internally as integer units (1c = 10 units) so the 0.5c generation never needs a float
