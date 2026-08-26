@@ -3,7 +3,7 @@
 Table list for the DoD scope. Names are settled; columns are not written
 yet. Each entry says what the table holds, not how it is spelled in SQL.
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
 
 ## Naming convention
 
@@ -22,14 +22,14 @@ Last updated: 2026-08-25
 
 | Table | Holds |
 |---|---|
-| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. |
+| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — item level is the only growth axis, and talent points derive from `highest_tier_cleared`. |
 | `player_talent` | Which talents this player has taken. |
 
 ## Items
 
 | Table | Holds |
 |---|---|
-| `gear_template` | The definition of a piece of gear: name, slot (chest / head / legs / feet / weapon), base stats, base item level, rarity, which set it belongs to. |
+| `gear_template` | The definition of a piece of gear: name, slot (chest / head / legs / feet / weapon), base stats, base item level, rarity, which set it belongs to. Base stats are drawn from four: attack power (weapon), health and armor (armor slots), and critical strike (any slot). |
 | `gear_instance` | One actual piece of gear in the world: which template it follows, who owns it, its upgrade level. **No durability column** — durability is deferred. |
 | `player_gear_slot` | What this player currently has equipped. Five rows per player, one per slot, each pointing at a `gear_instance`. The slot count is enforced by the table shape rather than by application code, so equipping two helmets is structurally impossible. |
 | `stack_template` | The definition of anything counted rather than owned individually: crops, seeds, potions, crests, upgrade materials. Name, icon, max stack size. |
@@ -43,8 +43,15 @@ Merging them would duplicate the base stats once per owned copy and would
 turn a balance change into an update across every row in the game.
 
 Item level is **not stored anywhere.** It is computed from the template's
-base level plus the upgrade level, the same way crop growth is computed
-rather than stored.
+base level plus the upgrade level, at +5 per level.
+
+**Three values now follow this rule:** crop growth (from `planted_at`),
+item level (from base plus upgrade level), and talent points (total from
+`highest_tier_cleared`, spent from `player_talent` rows). A stored copy can
+end up disagreeing with whatever produced it; a computed one cannot. Note
+what this does and does not buy: deriving keeps the *database* honest, not
+the client. The server still has to check that talents taken never exceed
+points earned.
 
 ## Farm
 
@@ -59,7 +66,7 @@ rather than stored.
 | Table | Holds |
 |---|---|
 | `dungeon_template` | The definition of a dungeon. Only one dungeon is in the DoD, but naming it `template` leaves room to add more without renaming anything. |
-| `dungeon_tier_template` | Per tier 1-10: the time limit and the monster scaling multiplier. Ten rows. |
+| `dungeon_tier_template` | Per tier 1-10: the time limit and the monster scaling multiplier. Ten rows. The multiplier compounds 8% per tier, putting tier 10 at 2.0x tier 1. |
 | `monster_template` | Monster definitions: health, attack, mechanics. |
 | `dungeon_leaderboard` | The record of a completed run — who cleared which tier in what time. |
 | `dungeon_drop` | Which gear can drop at which tier, and at what rate. |
@@ -68,11 +75,17 @@ rather than stored.
 
 | Table | Holds |
 |---|---|
-| `upgrade` | The rules for upgrading: success rate and material cost per step. |
+| `upgrade` | The rules for upgrading, ten rows for +1 through +10: success rate, which crest tier, how many, and the refined-material cost. Rates run 100% / 70% / 40% across the three bands; crest counts run 1-4 within a band and reset when the band changes. |
 
 ---
 
 ## Not in the database
+
+**Damage events.** Seven fields per hit — timestamp, source skill, target,
+amount, crit, direct-or-tick, and whether armor applied — but they live in
+client memory only. Storing combat logs server-side is deferred; only the
+shape had to be settled early, since a DoT tick that loses its source skill
+can never get it back.
 
 **Skills.** "Generates 1 combo point" could be stored as data, but "hits a
 2x3 area in front of the character and scales its duration with combo

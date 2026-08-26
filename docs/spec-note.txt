@@ -4,14 +4,54 @@ Sickle(Melee)
 Button budget: 6 rotation buttons + 1 mobility skill
 
 1. builder(ST) - Furious Thrust: Brutally stabs the primary target. Generates 1c of Rage
-2. builder(AoE) - Brutal Swing: Cuts every enemy in a 2x3 area in front of the character, based on facing. The sickle has long reach. Generates 0.5c of Rage per target hit
+2. builder(AoE) - Brutal Swing: Cuts every enemy in a 2x3 area in front of the character, based on facing. The sickle has long reach. Generates 0.5c of Rage per target hit. Caps at 5 targets
 3. spender(ST) - Overhead Slam: Slams the primary target for heavy damage. Damage scales with combo points spent on a smooth curve - no sharp jump between steps, so holding for 5c should not always be the right call. Exact numbers TBD
-4. spender(AoE) - Whirling Slash: Channeled. Spins in place, cutting the enemies around you. 0.7s duration per combo point, movement allowed while channeling, ticking damage. Also applies a bleed to the primary target
+4. spender(AoE) - Whirling Slash: Channeled. Spins in place, cutting the enemies around you. 0.7s duration per combo point, movement allowed while channeling, ticking damage. Also applies a bleed to the primary target. Cannot be interrupted once started, and restores a flat amount of health on completion - amount TBD, has to stay well under the healing potion's 60%
 5. main cd - Market Price Rage: Enraged by crop inflation. All attack power increased by 20%, 1m cd, 15s sustain
 6. mini cd - Tilling: Tears a rift in the ground in the 3x3 area centered on the player. Every enemy in the rift takes 10% increased damage. 30s cd, 15s sustain
 7. mobility - Sprint: Movement speed increased by 30%. Lasts 10 seconds, 20s cd
 
 Notes
-- No target cap on Brutal Swing yet. Known consideration: at 0.5c per target, a large enough pack fills all 5 combo points in a single swing. Revisit during balancing
-- Spreading the bleed to nearby enemies per Whirling Slash tick is a talent tree candidate. Because the bleed rides on the AoE spender, Whirling Slash has a reason to be pressed in single target too
+- Brutal Swing caps at 5 targets, which settles the old worry that a big enough pack would fill all 5 combo points in one swing. 5 targets is 2.5c, so it always takes two swings. The cap lives on the base skill, not on the talent that widens the area
+- Spreading the bleed to nearby enemies per Whirling Slash tick is now a confirmed talent (tier 2, option A). Because the bleed rides on the AoE spender, Whirling Slash has a reason to be pressed in single target too
+- Whirling Slash cannot be interrupted. The cost is not a rule so much as a loss: quit early and the completion heal never lands. Movement stays free during the channel - being locked in for 3.5s with no movement as well would be too much. The real price is opportunity cost, since the GCD is fixed and a 5c channel is two or more skills not pressed
 - Rage is stored internally as integer units (1c = 10 units) so the 0.5c generation never needs a float
+- Spenders consume whole combo points only. At 2.5c a spender uses 2c and the leftover half stays on the bar for the next builder to top up
+- Brutal Swing on 5 targets generates 2.5c, so it beats Furious Thrust from 2 targets up and ties at exactly 2
+
+
+Talent tree
+5 tiers, one pick per tier, 2 points each - exactly the 10 points available. 13 talents total
+Names are TBD. Effects only for now
+Rule used while picking these: a talent has to change the rotation. A flat damage increase is arithmetic, not a choice, and arithmetic has one right answer
+
+Tier 1 - builders
+a. Furious Thrust damage up sharply
+b. Brutal Swing area 2x3 -> 3x3, plus a damage increase. The 5-target cap stays, so maximum Rage does not change - what changes is how easy it is to actually reach 5
+
+Tier 2 - bleed
+a. Whirling Slash spreads the bleed to 2 nearby targets per tick
+b. Bleed duration and damage up
+
+Tier 3 - spenders
+a. Overhead Slam used at 5c refunds 2c
+b. Damage taken reduced while channeling Whirling Slash
+c. The builder used right after a spender generates double Rage
+
+Tier 4 - cooldowns
+a. Spenders cost fewer combo points while Market Price Rage is up
+b. Brutal Swing generates double Rage while standing inside Tilling's rift
+c. Using both cooldowns at the same time adds an extra effect
+
+Tier 5 - finishers
+a. Spenders used at 5c always crit
+b. Spenders deal increased damage to bleeding targets
+c. After Sprint, the next builder - either one - instantly generates 5c
+
+Notes on the tree
+- Tier 4 was rewritten from scratch. The first draft was "cooldown lasts longer" and "cooldown comes back sooner", which is exactly the arithmetic the rule above rejects
+- Tier 3b replaced "keep move speed while channeling". That talent assumed a movement penalty during the channel, which was never in the spec - it came from WoW habit, not from this design
+- Tier 4b is the only talent in the tree that makes position matter, which is worth having in a grid-based world
+- Unresolved: tier 3a and tier 5a both reward holding to 5c, which pushes against Overhead Slam's deliberately smooth curve. Intended synergy, or move one?
+- Tier 5c is worth more in single target (+4c) than in AoE (+2.5c), which props up the branch where Rage builds slowest. It also turns Sprint from a movement skill into part of the damage rotation
+- Tier 2a's real strength depends on the tick interval, which is still undecided
