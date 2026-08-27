@@ -3,7 +3,7 @@
 Working document. Tracks what is decided, what is still open, and what is
 deliberately out of scope. Updated as design sessions go.
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 ---
 
@@ -104,7 +104,43 @@ Last updated: 2026-08-26
 
 ### Dungeon loop and rewards (2026-08-25)
 
-- One run is: enter -> fight -> clear -> rewards.
+- One run is: enter -> clear five pulls -> kill the boss -> rewards.
+- **Five pulls of 3–5 monsters each**, along a single vertical route.
+  Progress reads as a count — `3/5 pulls` — not a percentage. A percentage
+  would only be worth its complexity if there were more pulls than the run
+  requires, and on one straight route there is nothing to route around.
+- Pulls of 3–5 sit right on Brutal Swing's five-target cap, so one pull is
+  exactly what the AoE builder is built to eat.
+- **The boss appears the instant the fifth pull dies, on that spot.**
+  There is no boss room to walk to, and killing the boss is what completes
+  the run.
+- Popping immediately means the boss can begin while the player is at low
+  health with the potion still on cooldown. **That is deliberate** —
+  managing health and cooldowns through the last pull becomes part of
+  playing well. It will read as punishing to some players; accepted.
+- Monsters: **four trash types plus the boss.**
+
+  | Type | Role | Mechanic |
+  |---|---|---|
+  | Melee swarm | Fills out the pack, weak melee, what the AoE eats | none |
+  | Melee elite A | **Too much health to melt with AoE** | one |
+  | Melee elite B | The same role, told apart by its mechanic | one |
+  | Ranged | Attacks from a distance — close it, or ignore it | one |
+
+- Five mechanics in total: one on each elite, one on the ranged type, two
+  on the boss. **The swarm type stays plain**, so the pacing has somewhere
+  to breathe instead of demanding attention every pull.
+- The elites' health is what separates them from the swarm, and it does
+  more than that: **the swarm dies to AoE and the elite is left standing
+  alone, so every pull turns into a single-target finish.** Both halves of
+  the talent tree get used in all five pulls, not only against the boss.
+- **The second elite costs one mechanic and one row of stats, and buys
+  variety exactly where the run needs it.** With one elite type, that
+  single-target finish is the same fight five times over; with two, the
+  closing stretch of a pull changes depending on which one is left
+  standing.
+- The ranged type layers a positioning question on top: walk over and cut
+  it down, or eat the damage and keep swinging at the pack.
 - **Timed runs, WoW Mythic+ style.** The limit steps up in bands rather
   than rising every tier, so gear and player skill make the same limit feel
   looser as you improve:
@@ -344,16 +380,28 @@ this lives in client memory, and only the shape had to be settled early.
 
 Blocking items first — these hold up other work.
 
-- **Monster base numbers and mechanics.** The per-tier curve is settled
-  (8% compounding), but tier-1 health, armor, and damage are not, and
-  neither is anything monsters do beyond auto-attacking. Without mechanics,
-  real-time combat is half wasted — and with no affix system, mechanics are
-  the only source of tension at depth.
+- **What the five mechanics actually do.** The structure is settled — four
+  trash types plus a boss, five mechanics between them — but not one of
+  them is written. With no affix system, mechanics are the only source of
+  tension at depth.
   **One hard constraint: Whirling Slash cannot be interrupted, so a
   dodge-or-die mechanic has to leave a window wide enough to survive a
   3.5-second channel.** That is what turns "do I spend five combo points
   right now?" into a real decision.
-  *Blocks: the whole dungeon loop.*
+  *Blocks: the dungeon loop.*
+- **Tier-1 monster numbers** — health, armor, damage, and the trash types'
+  roles. Two things to work backwards from:
+  - **Time.** Tier 1 allows five minutes. Five pulls at roughly 40 seconds
+    plus a boss fills most of it, so "what dies in 40 seconds to a starting
+    sickle" sets trash health.
+  - **Damage.** Per-monster melee has to stay low, because what the player
+    actually absorbs is `melee × monsters attached` and pulls run 3–5 deep.
+    Difficulty should come from pack size and composition, not from any one
+    monster hitting hard — the same shape WoW Mythic+ uses, where a single
+    trash mob is trivial and the pull is what kills. It also ties damage to
+    survival: clearing a pack faster means taking less, so AoE throughput
+    doubles as a defensive stat.
+  *Blocks: any real balancing.*
 - **Column names for all 17 tables.** The table list has been settled since
   2026-08-25 and the systems sitting on top of it are now specified.
   *Blocks: writing any code at all.*
