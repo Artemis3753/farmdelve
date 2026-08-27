@@ -3,7 +3,7 @@
 Table list for the DoD scope. Names are settled; columns are not written
 yet. Each entry says what the table holds, not how it is spelled in SQL.
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
 
 ## Naming convention
 
@@ -22,7 +22,7 @@ Last updated: 2026-08-26
 
 | Table | Holds |
 |---|---|
-| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — item level is the only growth axis, and talent points derive from `highest_tier_cleared`. |
+| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — item level is the only growth axis, and talent points derive from `highest_tier_cleared`. **Gold is a column here, not a row in `player_stack`** (2026-08-27): it has no icon and no max stack, it does not take a bag slot the way potions do, and upgrading, repairing, and shops all read and write it inside transactions where a join would only add a lock to take. A second currency would be the day to reconsider — the same call made for `craft_recipe`. |
 | `player_talent` | Which talents this player has taken. |
 
 ## Items
@@ -100,5 +100,3 @@ talents a player picked.
 - Seeds: now confirmed as separate items from produce, so seeds need rows
   in `stack_template` and a link from `crop_template`.
 - Drop rates, and what happens on a duplicate drop.
-- Whether gold lives as a column on `player` or as a row in `player_stack`
-  alongside crests.
