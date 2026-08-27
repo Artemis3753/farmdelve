@@ -494,19 +494,12 @@ this lives in client memory, and only the shape had to be settled early.
 
 ## 2. Open questions
 
-Blocking items first — these hold up other work.
+**Nothing in the design blocks code any more** (2026-08-27). The upgrade
+slice has its seven tables named — see `data-model.md` — and gold is a
+column on `player`. What stands between here and the first line is project
+scaffolding, which is work rather than a decision.
 
-- **Column names.** The last thing standing between design and code. The
-  full seventeen are not needed at once: upgrading — the one feature
-  specified end to end — needs six (`player`, `gear_template`,
-  `gear_instance`, `player_stack`, `player_gear_slot`, `upgrade`), and the
-  other eleven belong to slices that come later.
-  *Blocks: writing any code at all.*
-- **Whether gold is a column on `player` or a row in `player_stack`.** Tiny
-  question, but the upgrade slice runs into it immediately.
-  *Blocks: the first slice.*
-
-Not blocking code, but blocking the dungeon:
+Blocking the dungeon, not the code:
 
 - **The two boss mechanics.** Deliberately parked until the trash is
   playable — see Trash mechanics above. The hard constraint carries over:
@@ -558,9 +551,17 @@ Non-blocking:
   it lands only if at least one tick connected, so walking away from
   everything and finishing the channel heals nothing. Without that, backing
   out of the elite's spin would have been rewarded rather than paid for.
-- **Whether attack speed varies by sickle, or is fixed for the weapon
-  type.** Only one weapon type is in the DoD, so per-item speed would add a
-  column without adding a choice.
+- ~~Whether attack speed varies by sickle~~ — **settled 2026-08-27: fixed
+  for the weapon type.** The sickle is medium; an axe would be slow. Speed
+  belongs to the weapon type, not the item, so it is a code constant and
+  `gear_template` gets no column. Both references point the same way — WoW
+  had to invent normalization precisely because per-weapon speed distorted
+  ability damage, and its fix was to treat speed as a property of the
+  weapon *type*; Fellowship drops per-weapon damage entirely and makes
+  attack speed a stat. The decisive argument is ours though: skills scale
+  off attack power rather than weapon damage, and auto-attacks generate no
+  Rage, so speed would only move auto-attack DPS — a job attack power
+  already has. Two knobs doing one job means one of them is dead.
 - Tier-3 A and tier-5 A both reward holding to five combo points, which
   cuts against Overhead Slam's deliberately smooth curve. Intended synergy,
   or move one of them?
@@ -606,10 +607,9 @@ Non-blocking:
 
 Table list is settled — see `data-model.md`. What is left:
 
-- [ ] **Column names** — the last thing standing between design and code.
-      Six tables cover the upgrade slice; the rest can wait for theirs
-- [ ] **Where gold lives** — a column on `player`, or a row in
-      `player_stack` next to the crests
+- [x] **Column names for the upgrade slice** — seven tables, 2026-08-27
+- [x] **Where gold lives** — a column on `player`
+- [ ] Column names for the other ten tables, slice by slice
 - [ ] Save timing strategy
 - [ ] **Drop details** — per-tier drop rates, duplicate handling, how many
       items one clear can yield. Recommendation on the table: roll once and

@@ -1,7 +1,8 @@
 # Data Model
 
-Table list for the DoD scope. Names are settled; columns are not written
-yet. Each entry says what the table holds, not how it is spelled in SQL.
+Table list for the DoD scope. Each entry says what the table holds. Columns
+are written for the seven tables in the first vertical slice (upgrading);
+the other ten get theirs when their slice arrives.
 
 Last updated: 2026-08-27
 
@@ -15,6 +16,25 @@ Last updated: 2026-08-27
 - `player_` marks per-player data: created and changed by playing.
 - Avoid PostgreSQL keywords. `player` is used instead of `user` for exactly
   this reason.
+
+Four column rules, settled 2026-08-27 while naming the first slice:
+
+1. **A primary key is the table name plus `_id`.** Foreign keys then spell
+   themselves — a column pointing at `gear_template` is
+   `gear_template_id` wherever it appears, so joins can use `USING` and
+   nothing has to be renamed on the way.
+2. **A prefix has to earn its place.** Keys travel between tables and need
+   one; `gold` and `amount` never leave theirs and do not. `base_` is not
+   a prefix in this sense — it means "before upgrading", which is why
+   `base_attack_power` has it and `upgrade_level` does not.
+3. **When a combination can only appear once, the combination is the key.**
+   A player holds exactly one row per stackable, so `player_stack` needs no
+   id of its own. A player can own two identical sickles at different
+   upgrade levels, so `gear_instance` does.
+4. **Role prefixes only where a table is referenced twice.** `upgrade`
+   points at `stack_template` for both the crest and the refined material,
+   so those become `crest_` and `material_` — the one place rule 1 cannot
+   apply.
 
 ---
 
@@ -79,6 +99,54 @@ points earned.
 
 ---
 
+## Columns — first slice (upgrading)
+
+Seven tables. Everything else waits for its own slice.
+
+```
+player                            gear_template
+  player_id              PK         gear_template_id        PK
+  gold                              name
+  highest_tier_cleared              slot
+                                    base_item_level
+stack_template                      rarity
+  stack_template_id      PK         base_attack_power
+  name                              base_health
+  icon                              base_armor
+  max_stack                         base_crit
+
+gear_instance                     player_stack
+  gear_instance_id       PK         player_id           FK ─┐
+  gear_template_id       FK         stack_template_id   FK ─┴ PK
+  player_id              FK         amount
+  upgrade_level
+
+player_gear_slot                  upgrade
+  player_id              FK ─┐      upgrade_level               PK
+  slot                       ─┴ PK  success_rate
+  gear_instance_id       FK         crest_stack_template_id     FK
+    (nullable)                      crest_amount
+                                    material_stack_template_id  FK
+                                    material_amount
+```
+
+Notes worth keeping:
+
+- `gear_instance.upgrade_level` and `upgrade.upgrade_level` share a name
+  because they are the same idea, but **they are not a foreign key pair.**
+  A `gear_instance` starts at 0 and `upgrade` has no row for 0 — the table
+  describes the *step from one level to the next*, so it begins at 1.
+- `player_gear_slot.gear_instance_id` is the slot's *contents*, not its
+  identity: it changes when gear is swapped, and it is NULL for the four
+  armour slots at the start. Both disqualify it from the key. A `UNIQUE`
+  constraint on it is still worth adding — PostgreSQL permits repeated
+  NULLs, so the empty slots are fine, while the same sickle equipped in two
+  places at once is not.
+- `slot` is a plain value, not a foreign key. Five fixed strings do not
+  earn a lookup table.
+- Nothing derived is stored: no item level, no computed stats, no talent
+  point total, no bag position.
+
 ## Not in the database
 
 **Damage events.** Seven fields per hit — timestamp, source skill, target,
@@ -96,7 +164,11 @@ talents a player picked.
 
 ## Open
 
-- Column names for every table above.
+- Column names for the ten tables outside the first slice.
+- Whether `stack_template` needs a kind column — potions, crests, seeds and
+  materials sit together undifferentiated. Nothing needs to tell them apart
+  until consumable key bindings exist, and adding it now would mean fixing
+  the list of kinds now.
 - Seeds: now confirmed as separate items from produce, so seeds need rows
   in `stack_template` and a link from `crop_template`.
 - Drop rates, and what happens on a duplicate drop.
