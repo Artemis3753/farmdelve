@@ -2,17 +2,22 @@ Spec note
 
 Sickle(Melee)
 Button budget: 6 rotation buttons + 1 mobility skill
+Range: 1 tile, diagonals included. Distances are tiles now - meters are gone
 
+0. auto-attack: Hits the primary target only, within range 1. Generates no Rage. Attack speed is a property of the weapon, hits per second, not a stat gear rolls. It costs no button and no GCD - it just runs
 1. builder(ST) - Furious Thrust: Brutally stabs the primary target. Generates 1c of Rage
-2. builder(AoE) - Brutal Swing: Cuts every enemy in a 2x3 area in front of the character, based on facing. The sickle has long reach. Generates 0.5c of Rage per target hit. Caps at 5 targets
+2. builder(AoE) - Brutal Swing: Cuts every enemy three wide and two rows ahead, based on facing. The only sickle skill that reaches past range 1, and the only one where facing matters. Generates 0.5c of Rage per target hit. Caps at 5 targets
 3. spender(ST) - Overhead Slam: Slams the primary target for heavy damage. Damage scales with combo points spent on a smooth curve - no sharp jump between steps, so holding for 5c should not always be the right call. Exact numbers TBD
-4. spender(AoE) - Whirling Slash: Channeled. Spins in place, cutting the enemies around you. 0.7s duration per combo point, movement allowed while channeling, ticking damage. Also applies a bleed to the primary target. Cannot be interrupted once started, and restores a flat amount of health on completion - amount TBD, has to stay well under the healing potion's 60%
+4. spender(AoE) - Whirling Slash: Channeled. Spins in place, cutting every enemy in range 1. 0.7s duration per combo point, movement allowed while channeling, ticking damage. Ticks are re-checked every tick against whoever is standing in range 1 right then, so walking away wastes ticks and walking back resumes them - no separate rule needed. Also applies a bleed, but only to the primary target: with no target selected the ticks still land and the bleed does not. Cannot be interrupted once started, and restores a flat amount of health on completion - amount TBD, has to stay well under the healing potion's 60%. The completion heal only lands if at least one tick connected
 5. main cd - Market Price Rage: Enraged by crop inflation. All attack power increased by 20%, 1m cd, 15s sustain
-6. mini cd - Tilling: Tears a rift in the ground in the 3x3 area centered on the player. Every enemy in the rift takes 10% increased damage. 30s cd, 15s sustain
+6. mini cd - Tilling: Tears a rift in the ground covering range 1 around the player. Every enemy in the rift takes 10% increased damage. 30s cd, 15s sustain
 7. mobility - Sprint: Movement speed increased by 30%. Lasts 10 seconds, 20s cd
 
 Notes
 - Brutal Swing caps at 5 targets, which settles the old worry that a big enough pack would fill all 5 combo points in one swing. 5 targets is 2.5c, so it always takes two swings. The cap lives on the base skill, not on the talent that widens the area
+- Brutal Swing is three wide, not two, because an even width has no centre tile for the player to stand on. Two wide would need a rule about which side it favours, and would hit the monster on one flank but not the other
+- Auto-attacks generating no Rage is what finally kills haste as an equipment stat. A faster auto-attack that feeds nothing cannot change the rotation, and a talent that only changes numbers is arithmetic
+- Tier 2a spreads the bleed from the primary target, so with no target selected there is nothing to spread. Targeting is not optional for that build
 - Spreading the bleed to nearby enemies per Whirling Slash tick is now a confirmed talent (tier 2, option A). Because the bleed rides on the AoE spender, Whirling Slash has a reason to be pressed in single target too
 - Whirling Slash cannot be interrupted. The cost is not a rule so much as a loss: quit early and the completion heal never lands. Movement stays free during the channel - being locked in for 3.5s with no movement as well would be too much. The real price is opportunity cost, since the GCD is fixed and a 5c channel is two or more skills not pressed
 - Rage is stored internally as integer units (1c = 10 units) so the 0.5c generation never needs a float

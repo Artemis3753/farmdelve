@@ -93,14 +93,37 @@ Last updated: 2026-08-27
   error or insufficient materials rolls the transaction back. Failure is a
   normal, committed outcome.
 
-### Grid movement (2026-08-25)
+### Grid movement and range (2026-08-25, ranges settled 2026-08-27)
 
 - **The world is grid-based**, like Stardew Valley. Positions are tiles,
   not free coordinates, which keeps range and area checks simple.
-- Skill areas are written in tiles: the AoE builder hits a 2x3 area in
-  front of the character, the mini cooldown covers the 3x3 around it.
-- Ranges recorded earlier in meters (4m / 12m / 8m) need converting to
-  tiles once tile size is fixed.
+- **Meters are gone — every distance is written in tiles.** The 4m / 12m /
+  8m figures recorded on 2026-08-24 were borrowed from free-movement games
+  and never meant anything on a grid.
+- **The Sickle's range is 1**: every adjacent tile, diagonals included.
+  Diagonals count as distance 1 because excluding them would leave a
+  monster standing at arm's length untouchable, and the player shuffling
+  sideways to line up. That is fussiness, not tactics.
+- Range 1 draws the same shape as a 3x3 centered on the player, so **the
+  elite's spin and the Sickle's reach overlap exactly**: the tile you have
+  to stand on to hit is the tile that gets you hit.
+- Movement is four-directional while range is eight-directional. Reaching
+  a diagonal tile costs two steps, but a monster already standing on one
+  can be hit. That asymmetry is worth keeping — it makes stepping sideways
+  out of a telegraphed area cheaper than backing away diagonally, so
+  *which way to step* is a real choice.
+- **Two notations, deliberately kept apart.** Anything centered on a
+  character is **range N**; anything projected forward is **N rows ahead**.
+  Both would otherwise be spelled "3x3" and mean different shapes.
+- Skill shapes in tiles: Brutal Swing covers **three wide by two rows
+  ahead**, based on facing — the only Sickle skill where facing matters,
+  and the only one that reaches past range 1. Its six tiles are what make
+  the five-target cap mean anything; cutting it to one row ahead would
+  leave three tiles and kill the cap. The tier-1 talent widens it to three
+  rows ahead. Whirling Slash and Tilling both cover range 1.
+- Crossbow and Watering Can ranges stay open — both are paper-only. Rough
+  anchor: ranged wants something near 4-6 for "shoots from afar" to read
+  at all against a melee range of 1.
 
 ### Dungeon loop and rewards (2026-08-25)
 
@@ -171,6 +194,92 @@ Last updated: 2026-08-27
   as "the gear paid off." WoW layers affixes on top of raw scaling to keep
   the pressure on; **we have no affixes, so the tension at depth has to
   come from monster mechanics instead.**
+
+### Trash mechanics (2026-08-27)
+
+Three of the five mechanics are written. **The two boss mechanics are left
+for after the dungeon actually runs** — the boss is the last monster in the
+chain, so settling it later shakes nothing structural, and fighting the
+trash first is what tells us what the boss should be answering.
+
+The three were checked against each other so no two say the same thing:
+
+| Type | What it takes from the player |
+|---|---|
+| Melee elite A | *Time* — step out, step back. It comes back |
+| Melee elite B | *Space* — the ground itself gets worse. It does not come back |
+| Ranged | *Nothing to dodge* — the only answer is to remove the source |
+
+**Melee elite A — the spin.** From the moment the pull starts, every ten
+seconds it winds up for two seconds and releases a hit covering range 1
+around itself. At **35% health it enrages**: melee damage up, and the
+interval tightens from ten seconds to six.
+
+Ten seconds is not punishing on its own — only a second or two goes to
+backing off, and a five-point Whirling Slash (3.5s) started right after a
+release finishes with four seconds to spare. Six is where it bites: the
+same channel then lands with half a second left. That is the point. Before
+the enrage a five-point channel is free; after it, *"do I have 3.5 seconds,
+or do I spend at three?"* becomes a live question every cycle. The hard
+constraint holds either way — the window never closes below the channel.
+
+Tying the tightening to health rather than to a timer puts the danger where
+the pull is already hardest: 35% arrives during the single-target finish,
+once the swarm is gone.
+
+**Melee elite B — the pools.** At an interval it leaves a lasting pool on
+whichever tile it is standing on. Pools expire, and standing in one deals
+damage over time — **enough to matter next to other damage, never enough to
+kill by itself.**
+
+Pools expire rather than lasting the pull, because permanent ones would be
+a soft enrage, and this design has now rejected that three separate times.
+The run timer and the 8% tier multiplier are the only clocks it gets.
+Expiry still leaves real compression: pools laid faster than they expire
+overlap.
+
+Two consequences came free, neither one designed on purpose:
+
+- The elite chases the player, so **the pools are laid along the path the
+  player walked.** Standing still stacks them on one tile; moving smears
+  them across the floor. The pressure is self-inflicted, which is exactly
+  the kind of rule a player learns after a few runs.
+- Tilling's rift is range 1 around the player, lasts 15 seconds, and
+  tier-4b doubles Brutal Swing's Rage inside it. A pool landing in the rift
+  asks whether the bonus is worth standing in damage. That collision was
+  not invented — it is two existing rules meeting on a grid.
+
+Damage only, no slow. A slow would collide with the ground healing pickups,
+which the player has to walk to, and would reduce Sprint to a single
+correct answer.
+
+**Ranged — the volley.** Every eight seconds it fires for heavy damage.
+**It cannot be interrupted or dodged.** The only answer is to walk over and
+cut it down, or to keep paying.
+
+No telegraph. A wind-up for something unavoidable only asks the player to
+feel bad for two seconds; a fixed eight-second interval is information they
+can plan around. It is also the one trash mechanic that does not touch
+positioning, which is worth having when the other two both do.
+
+Standing next to it stops its ordinary attacks but **not** the volley.
+Closing the distance pays off on arrival, before the kill lands — and the
+clock keeps running, so arriving is not the same as being safe.
+
+What was deliberately *not* chosen: a stacking, ever-growing threat. That
+turns "should I go?" into "I have to go eventually", which is the choice
+disappearing rather than sharpening. A fixed bill keeps the trade honest —
+damage per eight seconds against the cost of turning your back on the pack.
+
+Two numbers have to hold for that trade to survive, both for the balancing
+pass:
+
+- **A full pull's worth of volleys has to be survivable.** Five of them
+  across a forty-second pull must sit inside what the three healing sources
+  cover, or "priority target" quietly becomes "mandatory first kill".
+- **The ranged type needs low health.** A melee spec with range 1 walks
+  there with its back to the pack. If it is not quick to cut down, nobody
+  ever goes.
 
 ### How gear is obtained (2026-08-25)
 
@@ -268,6 +377,13 @@ what was written on 2026-08-25.
 ### Combat rules (2026-08-24)
 
 - Melee and ranged: fixed GCD.
+- **Auto-attacks generate no Rage** (2026-08-27). They hit the primary
+  target only, inside range 1. Attack speed — hits per second — is a
+  property of the weapon, not a stat gear rolls.
+- That single rule is what settles haste for good. If a faster auto-attack
+  cannot change the rotation, haste is arithmetic, and arithmetic has one
+  right answer. See Stats below, which reached the same place from the
+  fixed GCD.
 - Control spec: haste reduces the GCD, and DPS rises with it. No
   auto-attack, so its base haste starts higher than the other two.
 - Haste affects the GCD only. Faster DoT ticks are a control-spec talent,
@@ -380,17 +496,34 @@ this lives in client memory, and only the shape had to be settled early.
 
 Blocking items first — these hold up other work.
 
-- **What the five mechanics actually do.** The structure is settled — four
-  trash types plus a boss, five mechanics between them — but not one of
-  them is written. With no affix system, mechanics are the only source of
-  tension at depth.
-  **One hard constraint: Whirling Slash cannot be interrupted, so a
-  dodge-or-die mechanic has to leave a window wide enough to survive a
-  3.5-second channel.** That is what turns "do I spend five combo points
-  right now?" into a real decision.
-  *Blocks: the dungeon loop.*
-- **Tier-1 monster numbers** — health, armor, damage, and the trash types'
-  roles. Two things to work backwards from:
+- **Column names.** The last thing standing between design and code. The
+  full seventeen are not needed at once: upgrading — the one feature
+  specified end to end — needs six (`player`, `gear_template`,
+  `gear_instance`, `player_stack`, `player_gear_slot`, `upgrade`), and the
+  other eleven belong to slices that come later.
+  *Blocks: writing any code at all.*
+- **Whether gold is a column on `player` or a row in `player_stack`.** Tiny
+  question, but the upgrade slice runs into it immediately.
+  *Blocks: the first slice.*
+
+Not blocking code, but blocking the dungeon:
+
+- **The two boss mechanics.** Deliberately parked until the trash is
+  playable — see Trash mechanics above. The hard constraint carries over:
+  Whirling Slash cannot be interrupted, so anything dodge-or-die has to
+  leave a window wider than a 3.5-second channel.
+- **Dungeon grid size**, which the ranged type's range depends on. A range
+  longer than the visible board means being shot from off-screen; a short
+  one makes walking over cheap. Since that walk is the whole trade the
+  ranged type offers, its range is structure, not a balance number — and it
+  cannot be picked before the board is.
+- **Pull composition.** Three to five monsters, but not which. Two elite
+  types in one pull means two timers plus a volley running at once; if
+  anything is going to feel unfair, it starts here rather than in any one
+  mechanic's numbers.
+- **Tier-1 monster numbers** — health, armor, damage, plus the intervals
+  and damage for the three mechanics now written (spin, pools, volley).
+  Two things to work backwards from:
   - **Time.** Tier 1 allows five minutes. Five pulls at roughly 40 seconds
     plus a boss fills most of it, so "what dies in 40 seconds to a starting
     sickle" sets trash health.
@@ -402,9 +535,10 @@ Blocking items first — these hold up other work.
     survival: clearing a pack faster means taking less, so AoE throughput
     doubles as a defensive stat.
   *Blocks: any real balancing.*
-- **Column names for all 17 tables.** The table list has been settled since
-  2026-08-25 and the systems sitting on top of it are now specified.
-  *Blocks: writing any code at all.*
+  Two constraints are already fixed by the mechanics: the pools may not
+  kill on their own — a rough test is surviving a full pull standing in
+  them without dropping past half health — and a pull's worth of volleys
+  has to sit inside what the healing sources cover.
 
 Non-blocking:
 
@@ -420,7 +554,13 @@ Non-blocking:
   Open numbers: the pickup's cooldown, heal, lifetime, and spawn distance;
   and the channel heal's amount. **The constraint on all of them is the
   same — none may outheal the potion per unit of time, or Potato has no
-  reason to exist.**
+  reason to exist.** The channel heal's *condition* is settled (2026-08-27):
+  it lands only if at least one tick connected, so walking away from
+  everything and finishing the channel heals nothing. Without that, backing
+  out of the elite's spin would have been rewarded rather than paid for.
+- **Whether attack speed varies by sickle, or is fixed for the weapon
+  type.** Only one weapon type is in the DoD, so per-item speed would add a
+  column without adding a choice.
 - Tier-3 A and tier-5 A both reward holding to five combo points, which
   cuts against Overhead Slam's deliberately smooth curve. Intended synergy,
   or move one of them?
@@ -453,8 +593,12 @@ Non-blocking:
 - [x] Sickle skill list — see `spec-note.txt`
 - [x] Skill resource system — Rage, combo-point model
 - [x] Sickle talent tree — thirteen talents, five tiers
+- [x] Skill shapes and ranges in tiles — meters dropped
+- [x] Auto-attack rules — primary target only, generates no Rage
+- [x] **Trash mechanics** — spin, pools, volley
 - [ ] Names for the thirteen talents (owner: Jihwan)
-- [ ] Monster base numbers, mechanics, and roster
+- [ ] The two boss mechanics — parked until the trash is playable
+- [ ] Monster base numbers and roster
 - [ ] Crossbow skill list *(outside the DoD — paper only)*
 - [ ] Watering Can skill list *(outside the DoD — paper only)*
 
@@ -462,8 +606,10 @@ Non-blocking:
 
 Table list is settled — see `data-model.md`. What is left:
 
-- [ ] **Column names for all 17 tables** — now the last thing standing
-      between design and code
+- [ ] **Column names** — the last thing standing between design and code.
+      Six tables cover the upgrade slice; the rest can wait for theirs
+- [ ] **Where gold lives** — a column on `player`, or a row in
+      `player_stack` next to the crests
 - [ ] Save timing strategy
 - [ ] **Drop details** — per-tier drop rates, duplicate handling, how many
       items one clear can yield. Recommendation on the table: roll once and
@@ -481,6 +627,9 @@ Table list is settled — see `data-model.md`. What is left:
 
 - [x] Definition of Done (see §5)
 - [x] UI wireframes — hand-drawn on paper 2026-08-26
+- [ ] Project scaffolding — Express, React, PostgreSQL wired together. Not
+      a design item, but it is the other thing standing between here and
+      the first line of code
 - [ ] REST API endpoint list — the upgrade endpoint first, since it carries
       the server-authoritative roll
 - [ ] Accounts and login (see §4 — deferred)
