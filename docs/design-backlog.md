@@ -68,9 +68,15 @@ Last updated: 2026-08-27
 
   | Upgrade | Crest | Crests needed | Refined material | Success |
   |---|---|---|---|---|
-  | +1 → +4 | T1 | 1, 2, 3, 4 | 1 each | 100% |
-  | +5 → +8 | T2 | 1, 2, 3, 4 | 1 each | 70% |
-  | +9 → +10 | T3 | 1, 2 | 1 each | 40% |
+  | +1 → +4 | Seed Crest (T1) | 1, 2, 3, 4 | 1 each | 100% |
+  | +5 → +8 | Sprout Crest (T2) | 1, 2, 3, 4 | 1 each | 70% |
+  | +9 → +10 | Harvest Crest (T3) | 1, 2 | 1 each | 40% |
+
+- **Names settled 2026-08-28.** The three crests are **Seed / Sprout /
+  Harvest Crest** — only the adjective changes, so the tier order reads
+  without a legend. The refined material is **Refined Ironroot**, which
+  keeps its relationship to the raw crop in the name. The starting weapon
+  is the **Solid Sickle**.
 
 - The count resets at each band, but the crest tier rises, so the real cost
   keeps climbing. Higher crests only drop in deeper dungeons, which is what
@@ -567,7 +573,10 @@ Non-blocking:
   or move one of them?
 - Names for the thirteen talents.
 - Critical strike's K value; base GCD.
-- Starting sickle's base stats.
+- Starting sickle's base stats. **A placeholder went into the database on
+  2026-08-28** — 10 attack power, item level 1, everything else zero. Real
+  numbers wait on monster health, since "what dies in 40 seconds" is what
+  sets them.
 - The upgrade endpoint's request and response shape — server-authoritative
   RNG means the client may only name *which item*.
 - Save timing during a dungeon run. Writing every frame is impossible; what

@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node --env-file=.env index.js"
+    "start": "node --env-file=.env index.js",
+    "db:reset": "set -a && . ./.env && set +a && psql -v ON_ERROR_STOP=1 \"$DATABASE_URL\" -f db/schema.sql && psql -v ON_ERROR_STOP=1 \"$DATABASE_URL\" -f db/seed.sql"
   },
   "keywords": [],
   "author": "",
