@@ -86,3 +86,27 @@ FROM (VALUES
   ( 9,  40, 'Harvest Crest', 1),
   (10,  40, 'Harvest Crest', 2)
 ) AS v(level, rate, crest_name, crest_amount);
+
+
+-- 7. 강화 재료를 쥐여준다. 농사도 던전도 아직 없어서 재료가 들어올 통로가
+--    하나도 없으므로, 이게 없으면 강화 API는 재료 부족만 돌려준다.
+--
+--    수량은 백로그의 +10 기댓값(T1 10, T2 약 14, T3 약 8, 정제 재료 약 15)보다
+--    넉넉하게 잡았다. 세 확률 구간(100% / 70% / 40%)을 한 번에 통과해보려는
+--    것이고, 재료 부족 응답은 다 쓰고 나면 어차피 만나게 된다.
+--
+--    Ironroot(원재료)는 넣지 않는다. 정제 기능이 없어서 Refined Ironroot로
+--    바꿀 방법이 아직 없고, 그러면 가방에 쓸모없이 쌓이기만 한다.
+--
+--    재료를 얻는 경로가 생기면 이 블록은 지운다.
+INSERT INTO player_stack (player_id, stack_template_id, amount)
+SELECT
+  (SELECT player_id FROM player),
+  (SELECT stack_template_id FROM stack_template WHERE name = v.name),
+  v.amount
+FROM (VALUES
+  ('Seed Crest',       20),
+  ('Sprout Crest',     20),
+  ('Harvest Crest',    20),
+  ('Refined Ironroot', 40)
+) AS v(name, amount);

@@ -3,7 +3,7 @@
 Working document. Tracks what is decided, what is still open, and what is
 deliberately out of scope. Updated as design sessions go.
 
-Last updated: 2026-08-27
+Last updated: 2026-08-31
 
 ---
 
@@ -98,6 +98,20 @@ Last updated: 2026-08-27
   spend has to commit, or a player retries until it works. Only a database
   error or insufficient materials rolls the transaction back. Failure is a
   normal, committed outcome.
+- **The endpoint, settled 2026-08-30.** `POST /api/gear/:gearInstanceId/upgrade`
+  with no body — a server-authoritative roll leaves the client nothing to
+  send but which item, so it goes in the path. POST rather than PATCH on two
+  counts: the call is deliberately not idempotent, and PATCH's shape would
+  have the client naming the result.
+  - `200 { upgraded, gear, stacks }` whichever way the roll lands. A bad
+    roll is still a processed request, and it reports itself as
+    `upgraded: false`.
+  - `409` when the request is well formed but the state refuses it —
+    materials short, or already +10.
+  - `404` for gear that does not exist or belongs to someone else, merged
+    so that a response cannot confirm an id exists.
+  - The body carries the updated gear and both changed stacks, so the
+    client never needs a follow-up GET to redraw.
 
 ### Grid movement and range (2026-08-25, ranges settled 2026-08-27)
 
@@ -577,8 +591,6 @@ Non-blocking:
   2026-08-28** — 10 attack power, item level 1, everything else zero. Real
   numbers wait on monster health, since "what dies in 40 seconds" is what
   sets them.
-- The upgrade endpoint's request and response shape — server-authoritative
-  RNG means the client may only name *which item*.
 - Save timing during a dungeon run. Writing every frame is impossible; what
   happens if the browser closes mid-run?
 - Drop details — per-tier rates, duplicate handling, how many items one
