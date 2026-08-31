@@ -25,8 +25,8 @@ VALUES
 -- 3. 시작 낫의 정의. 스탯은 임시값이다 — 몬스터 체력이 정해져야 "40초에
 --    무엇이 죽는가"로 역산할 수 있고, 그 전 숫자는 근거가 없다.
 --    base_health / base_armor / base_crit은 DEFAULT 0이라 목록에서 뺐다.
-INSERT INTO gear_template (name, slot, base_item_level, rarity, base_attack_power)
-VALUES ('Solid Sickle', 'weapon', 1, 'common', 10);
+INSERT INTO gear_template (name, slot, rarity, base_attack_power)
+VALUES ('Solid Sickle', 'weapon', 'common', 10);
 
 
 -- 4. 그 낫을 실제로 한 자루 만들어 플레이어에게 준다.

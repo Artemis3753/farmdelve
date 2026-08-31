@@ -117,10 +117,7 @@ function App() {
           {weaponTemplate.name}
           {weapon.upgradeLevel > 0 && ` +${weapon.upgradeLevel}`}
         </h2>
-        <p>
-          Attack power {weaponTemplate.baseAttackPower} · Item level{' '}
-          {weaponTemplate.baseItemLevel + weapon.upgradeLevel * 5}
-        </p>
+        <p>Attack power {weaponTemplate.baseAttackPower}</p>
       </section>
 
       <section>

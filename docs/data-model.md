@@ -42,14 +42,14 @@ Four column rules, settled 2026-08-27 while naming the first slice:
 
 | Table | Holds |
 |---|---|
-| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — item level is the only growth axis, and talent points derive from `highest_tier_cleared`. **Gold is a column here, not a row in `player_stack`** (2026-08-27): it has no icon and no max stack, it does not take a bag slot the way potions do, and upgrading, repairing, and shops all read and write it inside transactions where a join would only add a lock to take. A second currency would be the day to reconsider — the same call made for `craft_recipe`. |
+| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — gear is the only growth axis, and talent points derive from `highest_tier_cleared`. **Gold is a column here, not a row in `player_stack`** (2026-08-27): it has no icon and no max stack, it does not take a bag slot the way potions do, and upgrading, repairing, and shops all read and write it inside transactions where a join would only add a lock to take. A second currency would be the day to reconsider — the same call made for `craft_recipe`. |
 | `player_talent` | Which talents this player has taken. |
 
 ## Items
 
 | Table | Holds |
 |---|---|
-| `gear_template` | The definition of a piece of gear: name, slot (chest / head / legs / feet / weapon), base stats, base item level, rarity, which set it belongs to. Base stats are drawn from four: attack power (weapon), health and armor (armor slots), and critical strike (any slot). |
+| `gear_template` | The definition of a piece of gear: name, slot (chest / head / legs / feet / weapon), base stats, rarity, which set it belongs to. Base stats are drawn from four: attack power (weapon), health and armor (armor slots), and critical strike (any slot). |
 | `gear_instance` | One actual piece of gear in the world: which template it follows, who owns it, its upgrade level. **No durability column** — durability is deferred. |
 | `player_gear_slot` | What this player currently has equipped. Five rows per player, one per slot, each pointing at a `gear_instance`. The slot count is enforced by the table shape rather than by application code, so equipping two helmets is structurally impossible. |
 | `stack_template` | The definition of anything counted rather than owned individually: crops, seeds, potions, crests, upgrade materials. Name, icon, max stack size. |
@@ -62,12 +62,9 @@ questions. "A sickle has 50 base attack" is true of every sickle forever;
 Merging them would duplicate the base stats once per owned copy and would
 turn a balance change into an update across every row in the game.
 
-Item level is **not stored anywhere.** It is computed from the template's
-base level plus the upgrade level, at +5 per level.
-
-**Three values now follow this rule:** crop growth (from `planted_at`),
-item level (from base plus upgrade level), and talent points (total from
-`highest_tier_cleared`, spent from `player_talent` rows). A stored copy can
+**Two values follow this rule:** crop growth (from `planted_at`) and talent
+points (total from `highest_tier_cleared`, spent from `player_talent`
+rows). A stored copy can
 end up disagreeing with whatever produced it; a computed one cannot. Note
 what this does and does not buy: deriving keeps the *database* honest, not
 the client. The server still has to check that talents taken never exceed
@@ -108,12 +105,12 @@ player                            gear_template
   player_id              PK         gear_template_id        PK
   gold                              name
   highest_tier_cleared              slot
-                                    base_item_level
-stack_template                      rarity
-  stack_template_id      PK         base_attack_power
-  name                              base_health
-  icon                              base_armor
-  max_stack                         base_crit
+                                    rarity
+stack_template                      base_attack_power
+  stack_template_id      PK         base_health
+  name                              base_armor
+  icon                              base_crit
+  max_stack
 
 gear_instance                     player_stack
   gear_instance_id       PK         player_id           FK ─┐
@@ -144,8 +141,8 @@ Notes worth keeping:
   places at once is not.
 - `slot` is a plain value, not a foreign key. Five fixed strings do not
   earn a lookup table.
-- Nothing derived is stored: no item level, no computed stats, no talent
-  point total, no bag position.
+- Nothing derived is stored: no computed stats, no talent point total, no
+  bag position.
 
 ## Not in the database
 

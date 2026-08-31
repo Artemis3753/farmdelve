@@ -88,7 +88,6 @@ Last updated: 2026-08-31
   downgrade, no destruction. Same reasoning as dying in a dungeon: this
   project does not punish.
 - Stats: `base_stat × (1 + 0.1 × upgrade_level)` — +10 doubles the base.
-- **Item level: +5 per upgrade level**, still derived rather than stored.
 - Server-authoritative.
 - **Expected cost to +10**, failure rates included: 10 T1 crests, ~14.3 T2,
   ~7.5 T3, and ~14.7 refined materials — roughly **74 Ironroot**. The knob
@@ -439,7 +438,7 @@ what was written on 2026-08-25.
 
 ### Character progression (2026-08-26)
 
-- **No character level, no XP — item level is the only growth axis.**
+- **No character level, no XP — gear is the only growth axis.**
   Growth comes from drops, upgrading, and set bonuses. Two axes would split
   the headline feature's weight and force monsters to be tuned against tier
   *and* level.
@@ -456,7 +455,7 @@ what was written on 2026-08-25.
   start empty and fill from drops.
 - Talent points are **not stored**: the total derives from
   `highest_tier_cleared`, the spend from `player_talent` rows. That is the
-  third derived value in this project after crop growth and item level.
+  second derived value in this project, after crop growth.
   **The server still has to verify that talents taken never exceed points
   earned** — deriving prevents a contradictory database, not a lying
   client.
@@ -588,7 +587,7 @@ Non-blocking:
 - Names for the thirteen talents.
 - Critical strike's K value; base GCD.
 - Starting sickle's base stats. **A placeholder went into the database on
-  2026-08-28** — 10 attack power, item level 1, everything else zero. Real
+  2026-08-28** — 10 attack power, everything else zero. Real
   numbers wait on monster health, since "what dies in 40 seconds" is what
   sets them.
 - Save timing during a dungeon run. Writing every frame is impossible; what
@@ -639,7 +638,7 @@ Table list is settled — see `data-model.md`. What is left:
 
 ### Progression
 
-- [x] Character growth model — item level only, no character level
+- [x] Character growth model — gear only, no character level
 - [x] Talent points — one per first tier clear, ten total
 - [x] Dungeon entry rules — highest cleared + 2
 - [x] **Gear upgrade system design** — specified 2026-08-26
@@ -695,6 +694,14 @@ Table list is settled — see `data-model.md`. What is left:
   not cost a rotation button.
 - **Haste as an equipment stat** — see §1 Stats. Kept in the design for the
   Watering Can, which is paper-only.
+- **Item level** (2026-08-31). Cut the day the upgrade screen first showed
+  it. With every `base_item_level` at 1 the number was the upgrade level
+  times five and nothing more, so the screen stated one fact twice and left
+  the player to work out how `+3` and `16` were related. Nothing computed
+  from it either: stats scale off `upgrade_level` directly, dungeon entry
+  off `highest_tier_cleared`. It starts earning its place the day drops
+  carry different base levels — and with no migrations, `gear_template` can
+  take the column back for the cost of one line.
 
 ---
 

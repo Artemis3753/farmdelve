@@ -36,8 +36,6 @@ CREATE TABLE gear_template (
   -- 5칸 고정이라 조회 테이블을 따로 두지 않고 CHECK로 막는다.
   slot TEXT NOT NULL CHECK (slot IN ('head', 'chest', 'legs', 'feet', 'weapon')),
 
-  base_item_level INTEGER NOT NULL CHECK (base_item_level > 0),
-
   -- 등급은 기본 스탯의 크기를 결정한다. 강화 상한(+10)이나 붙는 스탯 종류는
   -- 등급과 무관하다 — 진행 축이 던전 단수와 강화로 이미 둘이라 셋째 축은 짧게 둔다.
   rarity TEXT NOT NULL CHECK (rarity IN ('common', 'rare', 'epic')),

@@ -29,7 +29,6 @@ export async function getTemplates() {
 
     pool.query(
       `SELECT gear_template_id AS "gearTemplateId", name, slot, rarity,
-              base_item_level    AS "baseItemLevel",
               base_attack_power  AS "baseAttackPower",
               base_health        AS "baseHealth",
               base_armor         AS "baseArmor",
