@@ -1,9 +1,16 @@
 import express from 'express';
 import pool from './db/pool.js';
 import { attemptUpgrade } from './services/upgrade.js';
+import { getTemplates } from './services/templates.js';
+import { getPlayer } from './services/player.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
+
+// 로그인이 아직 없다. design-backlog.md §4에서 Google OAuth로 미뤘고, 그때까지
+// 모든 요청은 seed.sql이 넣어둔 한 명의 것이다. 인증이 들어오면 이 상수가
+// 사라지고 요청마다 다른 값이 들어올 자리라, 세 라우트에 흩뿌리지 않고 모아둔다.
+const PLAYER_ID = 1;
 
 // 서버만이 아니라 DB까지 살아 있는지 확인한다. 시각을 DB에서 직접 받아오는 이유는
 // 하드코딩으로 만들 수 없는 값이기 때문이다 — 이 응답이 오면 Express와 PostgreSQL이
@@ -33,11 +40,6 @@ app.get('/api/health', async (req, res) => {
 // 쥔다는 이 기능의 전제와 정면으로 부딪친다. 경로 끝의 upgrade가 명사가 아니라
 // 동사인 것이 그 신호다.
 app.post('/api/gear/:gearInstanceId/upgrade', async (req, res) => {
-  // 로그인이 아직 없다. design-backlog.md §4에서 Google OAuth로 미뤘고, 그때까지
-  // 모든 요청은 seed.sql이 넣어둔 한 명의 것이다. 인증이 들어오면 이 줄이 바뀔
-  // 자리라 흩뿌리지 않고 상수로 뺀다.
-  const playerId = 1;
-
   // URL 조각은 언제나 문자열이라 'abc' 같은 값이 그대로 내려가면 pg가 22P02로
   // 터지고, 그건 500으로 보고된다. 하지만 잘못된 요청이지 서버 고장이 아니므로
   // 여기서 걸러 없는 장비와 같은 404로 합친다.
@@ -48,7 +50,7 @@ app.post('/api/gear/:gearInstanceId/upgrade', async (req, res) => {
   }
 
   try {
-    const result = await attemptUpgrade(playerId, gearInstanceId);
+    const result = await attemptUpgrade(PLAYER_ID, gearInstanceId);
 
     // 주사위가 어떻게 나왔든 200이다. "강화에 실패했다"와 "요청이 처리되지
     // 않았다"는 다른 층위이고, 전자는 upgraded: false로 실려 나간다.
@@ -67,6 +69,36 @@ app.post('/api/gear/:gearInstanceId/upgrade', async (req, res) => {
       // 의도해서 던진 에러는 reason과 details를 그대로 내보낸다. "3개 필요한데
       // 1개 있음"까지 담겨 있어서 클라이언트가 추가 조회 없이 안내할 수 있다.
       res.status(status).json({ reason: err.reason, details: err.details });
+    }
+  }
+});
+
+// 밸런스 패치 때만 바뀌는 정의들. 클라이언트가 앱을 열 때 한 번 받아 캐싱하는
+// 것을 전제로 하므로, playerId도 받지 않고 누구에게나 같은 답을 돌려준다.
+app.get('/api/templates', async (req, res) => {
+  try {
+    res.json(await getTemplates());
+  } catch (err) {
+    console.error('templates failed:', err);
+    res.status(500).json({ reason: 'internal_error' });
+  }
+});
+
+// 지금 이 플레이어의 상태 전부 — 골드, 가진 장비, 장착 칸, 재료.
+app.get('/api/player', async (req, res) => {
+  try {
+    res.json(await getPlayer(PLAYER_ID));
+  } catch (err) {
+    // getPlayer가 붙여 보내는 404 말고는 전부 500이다. 세 라우트가 같은 모양을
+    // 반복하는데, Express의 에러 미들웨어로 묶는 건 라우트가 더 늘어난 뒤에
+    // 해도 늦지 않다.
+    const status = err.status ?? 500;
+
+    if (status === 500) {
+      console.error('player fetch failed:', err);
+      res.status(500).json({ reason: 'internal_error' });
+    } else {
+      res.status(status).json({ reason: err.reason });
     }
   }
 });

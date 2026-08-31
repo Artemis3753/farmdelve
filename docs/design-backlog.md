@@ -726,3 +726,11 @@ Anything after it is a separate update, not "still finishing up."
       point where one fixed layout suits everybody.
 - [ ] **The Greenhouse as its own screen** — added 2026-08-26. Planting and
       harvesting moved off the main screen once the layout was drawn.
+
+- [ ] **Every string the player sees is in English** — fixed 2026-08-31.
+      This is a portfolio piece for a job search in Canada, so the screens
+      an interviewer opens cannot be in Korean. Written in English from the
+      first screen rather than translated at the end: strings sit inline in
+      JSX, and the cost of finding them all only grows with the screen
+      count. Code comments stay in Korean — they are for the author, not
+      the player.
