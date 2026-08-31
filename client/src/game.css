@@ -1,0 +1,185 @@
+/* 게임 화면 스타일. Vite 템플릿이 남긴 index.css는 문서용이라 h1이 56px에
+   가운데 정렬이다 — 게임 화면에는 안 맞아서 여기서 다시 잡는다. */
+
+.screen {
+  padding: 16px;
+  text-align: left;
+}
+
+.screen-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.screen-header h1 {
+  font-size: 24px;
+  margin: 0;
+}
+
+/* 메인 화면의 18×10 격자. 손그림의 5×5 구역 넷이 여기 얹힌다.
+   aspect-ratio로 칸을 정사각형에 가깝게 유지한다. */
+.main-grid {
+  display: grid;
+  grid-template-columns: repeat(18, 1fr);
+  grid-template-rows: repeat(10, 1fr);
+  gap: 2px;
+  aspect-ratio: 18 / 10;
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--code-bg);
+}
+
+/* 문 하나. 격자 위 어디에 놓일지는 인라인 style로 각자 정한다. */
+.zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 2px solid var(--accent-border);
+  background: var(--accent-bg);
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-h);
+}
+
+.zone:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.zone-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.zone-label {
+  font-size: 13px;
+}
+
+/* 캐릭터. 아직 이미지가 없어서 이모지 한 글자로 자리만 잡아둔다. */
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+/* 장비 5칸. 대장간 아래쪽과 은신처 양옆에서 같은 모양을 쓴다. */
+.slot-row {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.slot {
+  width: 72px;
+  min-height: 72px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.slot-empty {
+  color: var(--text);
+  opacity: 0.5;
+}
+
+.slot-name {
+  display: block;
+  font-size: 11px;
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+
+/* 가방 10×3. 지금은 빈 칸만 그린다. */
+.bag {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  max-width: 520px;
+}
+
+.bag-cell {
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.placeholder {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  opacity: 0.7;
+  font-size: 14px;
+}
+
+/* 온실의 5×5 밭. 메인 화면에 보이는 밭과 같은 크기지만, 이쪽이 실제 작업대다. */
+.field {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  max-width: 320px;
+}
+
+.plot {
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--code-bg);
+}
+
+/* 던전 헤더 — 단수, 남은 시간, 진행도가 한 줄에 선다. */
+.dungeon-header {
+  display: flex;
+  gap: 24px;
+  font-family: var(--mono);
+  margin-bottom: 12px;
+}
+
+.dungeon-view {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.dungeon-direction {
+  display: block;
+  font-size: 13px;
+  opacity: 0.6;
+  margin-bottom: 8px;
+}
+
+/* 분노 다섯 칸. 자원을 칸으로 세기로 한 결정이 화면에도 그대로 드러난다. */
+.rage-bar {
+  display: flex;
+  gap: 3px;
+  max-width: 320px;
+  margin-bottom: 12px;
+}
+
+.rage-cell {
+  flex: 1;
+  height: 18px;
+  border: 1px solid var(--accent-border);
+  border-radius: 3px;
+}
+
+.skill-key {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--mono);
+}
