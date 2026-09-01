@@ -3,6 +3,7 @@ import pool from './db/pool.js';
 import { attemptUpgrade } from './services/upgrade.js';
 import { getTemplates } from './services/templates.js';
 import { getPlayer } from './services/player.js';
+import { equipGear } from './services/equip.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -69,6 +70,32 @@ app.post('/api/gear/:gearInstanceId/upgrade', async (req, res) => {
       // 의도해서 던진 에러는 reason과 details를 그대로 내보낸다. "3개 필요한데
       // 1개 있음"까지 담겨 있어서 클라이언트가 추가 조회 없이 안내할 수 있다.
       res.status(status).json({ reason: err.reason, details: err.details });
+    }
+  }
+});
+
+// 장착. 강화가 POST인 것과 달리 여기는 PUT이다 — 같은 요청을 두 번 보내도
+// 결과가 한 번과 같으므로 멱등하고, PUT은 바로 그런 요청을 위한 메서드다.
+//
+// body가 비어 있는 것도 같은 이유의 연장이다. 슬롯을 받지 않으니 클라이언트가
+// 보낼 것이 URL의 장비 번호 하나뿐이다.
+app.put('/api/gear/:gearInstanceId/equip', async (req, res) => {
+  const gearInstanceId = Number(req.params.gearInstanceId);
+
+  if (!Number.isInteger(gearInstanceId)) {
+    return res.status(404).json({ reason: 'gear_not_found' });
+  }
+
+  try {
+    res.json(await equipGear(PLAYER_ID, gearInstanceId));
+  } catch (err) {
+    const status = err.status ?? 500;
+
+    if (status === 500) {
+      console.error('equip failed:', err);
+      res.status(500).json({ reason: 'internal_error' });
+    } else {
+      res.status(status).json({ reason: err.reason });
     }
   }
 });

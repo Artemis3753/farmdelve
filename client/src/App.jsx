@@ -16,9 +16,8 @@ function App() {
   // 지금 어느 화면인가. 라우터를 쓰지 않는 이유는 주소로 공유할 화면도 아니고
   // 브라우저 뒤로가기가 오히려 어색해서다 — 필요한 건 이름 하나뿐이다.
   //
-  // ★ 빈칸 1 — 앱을 열면 어느 화면부터 보여야 하는가? MainScreen이 문 넷에
-  //   붙여 보내는 id는 'greenhouse' / 'dungeon' / 'smithy' / 'shelter'이고,
-  //   그 넷 중 어느 것도 아닌 이름이 하나 더 필요하다.
+  // 'main'은 문 넷의 id('greenhouse' / 'dungeon' / 'smithy' / 'shelter')와
+  // 겹치지 않는 다섯 번째 이름이다. 앱을 열면 여기서 시작한다.
   const [screen, setScreen] = useState('main')
 
   useEffect(() => {
@@ -52,7 +51,14 @@ function App() {
   }
 
   if (screen === 'shelter') {
-    return <Shelter templates={templates} player={player} onLeave={goHome} />
+    return (
+      <Shelter
+        templates={templates}
+        player={player}
+        onPlayerChange={setPlayer}
+        onLeave={goHome}
+      />
+    )
   }
 
   // 두 화면은 배치만 서 있다. 온실은 crop_template·player_plot을, 던전은
@@ -61,9 +67,8 @@ function App() {
   if (screen === 'dungeon') return <Dungeon onLeave={goHome} />
 
 
-  // ★ 빈칸 2 — 문을 눌렀을 때 무엇이 일어나야 하는가? MainScreen은 눌린 문의
-  //   id를 인자로 넘겨준다. 그 id를 받아서 화면 상태로 넣어주는 함수가 필요한데,
-  //   위에서 이미 만들어 둔 것 중 하나가 그 일을 그대로 한다.
+  // MainScreen은 눌린 문의 id를 그대로 넘겨준다. 그 id가 곧 화면 이름이라
+  // setScreen을 따로 감싸지 않고 바로 건넨다.
   return <MainScreen onEnter={setScreen} />
 }
 

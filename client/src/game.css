@@ -111,6 +111,21 @@
   aspect-ratio: 1;
   border: 1px solid var(--border);
   border-radius: 4px;
+  padding: 0;
+}
+
+/* 물건이 든 칸만 눌리게 보인다. 빈 칸은 그냥 격자다. */
+.bag-item {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  cursor: context-menu;
+  font-size: 20px;
+}
+
+.hint {
+  font-size: 13px;
+  opacity: 0.7;
+  margin-bottom: 8px;
 }
 
 .placeholder {
