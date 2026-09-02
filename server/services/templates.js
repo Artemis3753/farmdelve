@@ -17,9 +17,8 @@ export async function getTemplates() {
   // 연결로 나가도 상관없다 — 트랜잭션이 아니기 때문이다. 강화 쪽이 연결을 직접
   // 빌렸던 건 BEGIN과 COMMIT이 같은 연결에 있어야 해서였다.
   const [stacks, gear, upgrades] = await Promise.all([
-    // ★ 빈칸 1 — max_stack을 JS 쪽 이름으로 내보낸다.
-    //   큰따옴표가 없으면 PostgreSQL이 식별자를 전부 소문자로 눕혀서
-    //   maxstack이 되어 나온다. 위의 "stackTemplateId"를 그대로 흉내 내면 된다.
+    // 별칭에 큰따옴표가 없으면 PostgreSQL이 식별자를 소문자로 눕혀서
+    // maxStack이 아니라 maxstack으로 나온다.
     pool.query(
       `SELECT stack_template_id AS "stackTemplateId", name, icon,
               max_stack AS "maxStack"

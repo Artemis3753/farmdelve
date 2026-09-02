@@ -59,9 +59,6 @@ export async function getPlayer(playerId) {
   //     → { head: null, chest: null, ..., weapon: 1 }
   const equipped = {};
   for (const row of slots.rows) {
-    // ★ 빈칸 2 — 무엇을 키로 삼고 무엇을 값으로 넣는가?
-    //   위 그림의 화살표 오른쪽 모양이 나와야 한다. row에는 slot과
-    //   gearInstanceId 둘이 들어 있다.
     equipped[row.slot] = row.gearInstanceId;
   }
 

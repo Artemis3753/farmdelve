@@ -30,8 +30,9 @@ function upgradeError(status, reason, details) {
 async function spendStack(client, playerId, stackTemplateId, need) {
   // FOR UPDATE가 이 행을 트랜잭션이 끝날 때까지 잠근다. 같은 행을 노리는 다른
   // 요청은 이 SELECT에서 멈춰 서서 기다리므로, 아래의 "확인하고 → 깎는" 사이로
-  // 끼어들 수 없다. 버튼을 두 번 눌러 요청이 겹쳐도 재료가 두 번 나가지 않는
-  // 이유가 이 한 줄이다.
+  // 끼어들 수 없다. 버튼을 두 번 눌러 요청이 겹쳐도 같은 재료를 두 번 셈하지
+  // 않는 이유가 이 한 줄이다. 재료가 두 번 나가는 것 자체는 막지 않는다 —
+  // 정당한 두 번째 요청이므로 그건 클라이언트의 busy가 할 일이다.
   const held = await client.query(
     `SELECT amount FROM player_stack
       WHERE player_id = $1 AND stack_template_id = $2
