@@ -42,7 +42,7 @@ Four column rules, settled 2026-08-27 while naming the first slice:
 
 | Table | Holds |
 |---|---|
-| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — gear is the only growth axis, and talent points derive from `highest_tier_cleared`. **Gold is a column here, not a row in `player_stack`** (2026-08-27): it has no icon and no max stack, it does not take a bag slot the way potions do, and upgrading, repairing, and shops all read and write it inside transactions where a join would only add a lock to take. A second currency would be the day to reconsider — the same call made for `craft_recipe`. |
+| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — gear is the only growth axis, and talent points derive from `highest_tier_cleared`. **Gold is a column here, not a row in `player_stack`** (2026-08-27): it has no icon and no max stack, it does not take a bag slot the way potions do, and upgrading, repairing, and shops all read and write it inside transactions where a join would only add a lock to take. A second currency would be the day to reconsider — the same call made for `recipe`. |
 | `player_talent` | Which talents this player has taken. |
 
 ## Items
@@ -76,7 +76,7 @@ points earned.
 |---|---|
 | `crop_template` | How a crop grows: growth duration, what it yields on harvest and how much, sale value. Points at the `stack_template` rows for its seed and its produce. |
 | `player_plot` | One tile of one player's farm: which plot, what is planted in it, and **when it was planted**. |
-| `craft_recipe` | One recipe: what goes in, what comes out. Single table, because all three recipes take exactly one ingredient type. Splitting into recipe plus ingredient rows is the textbook shape and is what to do the day a recipe needs two ingredients — not before. |
+| `recipe` | One recipe: what goes in, what comes out. Single table, because all three recipes take exactly one ingredient type. Splitting into recipe plus ingredient rows is the textbook shape and is what to do the day a recipe needs two ingredients — not before. |
 
 ## Dungeon
 

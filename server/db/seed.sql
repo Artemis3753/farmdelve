@@ -12,14 +12,33 @@
 INSERT INTO player DEFAULT VALUES;
 
 
--- 2. 쌓이는 물건 5종. stack_template_id는 GENERATED ALWAYS라 목록에서 뺀다.
+-- 2. 쌓이는 물건 12종. stack_template_id는 GENERATED ALWAYS라 목록에서 뺀다.
+--
+--    crest 셋은 원래 성장 단계(🌱🌿🌾)로 그렸는데 메달로 바꿨다. 🌾가 밀을
+--    나타내는 사실상 유일한 이모지라, 대체재가 없는 쪽에 양보한 것이다.
+--    crest는 등급만 전달하면 되고 메달이 오히려 등급으로 더 잘 읽힌다.
+--
+--    씨앗은 봉지 + 작물 두 글자다. icon이 TEXT라 이모지를 이어 붙일 수 있고,
+--    그러면 "씨앗이다"라는 분류와 "무슨 씨앗이다"가 한 칸에서 동시에 읽힌다.
+--
+--    이모지는 전부 자리 표시다. 이미지로 바꾸는 것은 별도 작업이고, icon이
+--    TEXT라 그때도 스키마는 그대로 두고 값만 경로로 갈아끼우면 된다.
 INSERT INTO stack_template (name, icon, max_stack)
 VALUES
-  ('Seed Crest',       '🌱', 99),
-  ('Sprout Crest',     '🌿', 99),
-  ('Harvest Crest',    '🌾', 99),
-  ('Refined Ironroot', '⚙️', 99),
-  ('Ironroot',         '🪵', 99);
+  ('Seed Crest',        '🥉',   99),
+  ('Sprout Crest',      '🥈',   99),
+  ('Harvest Crest',     '🥇',   99),
+  ('Refined Ironroot',  '⚙️',   99),
+  ('Ironroot',          '🪵',   99),
+
+  ('Wheat Seed',        '🫘🌾', 99),
+  ('Potato Seed',       '🫘🥔', 99),
+  ('Chili Pepper Seed', '🫘🌶️', 99),
+  ('Ironroot Seed',     '🫘🪵', 99),
+
+  ('Wheat',             '🌾',   99),
+  ('Potato',            '🥔',   99),
+  ('Chili Pepper',      '🌶️',   99);
 
 
 -- 3. 시작 장비 5종의 정의. 스탯은 전부 임시값이다 — 몬스터 체력이 정해져야
@@ -143,3 +162,81 @@ INSERT INTO gear_instance (gear_template_id, player_id, upgrade_level)
 SELECT gear_template_id, (SELECT player_id FROM player), 3
   FROM gear_template
  WHERE name IN ('Solid Sickle', 'Straw Hat');
+
+
+-- 9. 작물 4종. 성장 시간은 백로그에서 확정된 값이고(2026-08-26), 나머지 둘은
+--    임시값이다 — 골드 사용처가 아직 없어서 검증할 기준이 없다.
+--
+--    harvest_gold는 시간당으로 보면 Wheat이 두 배 유리하다. 백로그가 Wheat을
+--    cash crop으로 지정해서다. Ironroot가 제일 낮은 것은 골드가 아니라 강화
+--    재료라는 가치로 버는 작물이기 때문이다.
+--
+--    crop_amount는 넷 다 1이라 목록에 넣지 않고 직접 적는다. 6번 블록이
+--    material_amount를 1로 적은 것과 같은 이유다.
+--
+--    수확이 씨앗을 몇 개 돌려주는지는 여기 없다 — 전 작물 공통이라 코드 상수다.
+INSERT INTO crop_template (
+  seed_stack_template_id, crop_stack_template_id,
+  growth_time, crop_amount, harvest_gold
+)
+SELECT
+  (SELECT stack_template_id FROM stack_template WHERE name = v.seed_name),
+  (SELECT stack_template_id FROM stack_template WHERE name = v.crop_name),
+  v.growth_time,
+  1,
+  v.gold
+FROM (VALUES
+  ('Wheat Seed',        'Wheat',        INTERVAL '20 minutes', 8),
+  ('Potato Seed',       'Potato',       INTERVAL '5 minutes', 1),
+  ('Chili Pepper Seed', 'Chili Pepper', INTERVAL '5 minutes', 1),
+  ('Ironroot Seed',     'Ironroot',     INTERVAL '1 hour', 5)
+) AS v(seed_name, crop_name, growth_time, gold);
+
+
+-- 10. 조합 레시피 한 줄. 물약 둘은 전투가 생긴 다음이다 — 지금 넣어도 마실
+--     일이 없고, 마셔지지 않는 물약은 만들어봐야 확인이 안 된다.
+--
+--     한 행뿐이라 6번처럼 임시 표를 만들지 않고 VALUES에 바로 적는다.
+INSERT INTO recipe (
+  ingredient_stack_template_id, ingredient_amount,
+  crafted_stack_template_id, crafted_amount
+)
+VALUES (
+  (SELECT stack_template_id FROM stack_template WHERE name = 'Ironroot'),
+  5,
+  (SELECT stack_template_id FROM stack_template WHERE name = 'Refined Ironroot'),
+  1
+);
+
+
+-- 11. 밭 25칸을 빈 채로 만들어 둔다. 칸 자체가 행이라(player_gear_slot과 같은
+--     모양) 심기 전에도 25행이 있어야 한다. 없으면 심을 때 INSERT가 되고,
+--     그러면 FOR UPDATE가 잠글 행이 없어진다 — schema.sql에 적어둔 이유다.
+--
+--     generate_series(a, b)는 a부터 b까지 숫자를 한 행씩 내놓는 함수다. 표처럼
+--     FROM에 쓸 수 있어서, 25줄을 적는 대신 이 한 줄이 25행을 만든다.
+--
+--     crop_template_id와 planted_at은 목록에 없다. 안 적으면 NULL이 들어가고,
+--     그 둘이 함께 NULL인 것이 곧 빈 칸이다. 짝을 이뤄야 한다는 CHECK도
+--     둘 다 NULL이므로 통과한다.
+--
+--     밭 확장이 보류라 25는 당분간 고정이다. 늘리는 날 이 숫자와 schema.sql의
+--     CHECK를 함께 고쳐야 한다.
+INSERT INTO player_plot (player_id, plot_number)
+SELECT (SELECT player_id FROM player), n
+  FROM generate_series(1, 25) AS n;
+
+
+-- 12. 씨앗을 작물당 10개씩 쥐여준다. 밭이 25칸이라 40개로 다 채울 수는 있지만
+--     한 종류로 도배할 수는 없어서, 무엇을 심을지가 실제로 선택이 된다.
+--
+--     7번 블록과 성격이 다르다. 저쪽은 재료가 들어올 통로가 없어서 놓은 임시
+--     지급이고 통로가 생기면 지운다. 이쪽은 수확이 씨앗을 돌려주므로 통로가
+--     이미 있고, 이 블록은 그 순환을 시작시키는 초기 자본이라 계속 남는다.
+--
+--     수확물(Wheat, Potato...)은 주지 않는다. 심어서 거두면 나오는 것이라,
+--     주면 농사를 안 지어도 되는 상태가 된다.
+INSERT INTO player_stack (player_id, stack_template_id, amount)
+SELECT (SELECT player_id FROM player), stack_template_id, 10
+  FROM stack_template
+ WHERE name IN ('Wheat Seed', 'Potato Seed', 'Chili Pepper Seed', 'Ironroot Seed');
