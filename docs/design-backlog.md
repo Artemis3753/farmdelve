@@ -515,8 +515,8 @@ this lives in client memory, and only the shape had to be settled early.
 
 **Nothing in the design blocks code any more** (2026-08-27). The upgrade
 slice has its seven tables named — see `data-model.md` — and gold is a
-column on `player`. What stands between here and the first line is project
-scaffolding, which is work rather than a decision.
+column on `player`. Scaffolding landed 2026-08-28, and the upgrade and
+equipping slices are built on it.
 
 Blocking the dungeon, not the code:
 
@@ -647,7 +647,7 @@ Table list is settled — see `data-model.md`. What is left:
 
 - [x] Definition of Done (see §5)
 - [x] UI wireframes — hand-drawn on paper 2026-08-26
-- [ ] Project scaffolding — Express, React, PostgreSQL wired together. Not
+- [x] Project scaffolding — Express, React, PostgreSQL wired together. Not
       a design item, but it is the other thing standing between here and
       the first line of code
 - [ ] REST API endpoint list — the upgrade endpoint first, since it carries
@@ -726,7 +726,7 @@ Anything after it is a separate update, not "still finishing up."
 - [ ] **Deployed and reachable at a URL.** Project 1 was never deployed;
       this one ships. Target platform still open (see below).
 
-- [ ] **Inventory and equipping gear** — added 2026-08-25. Upgrading means
+- [x] **Inventory and equipping gear** — added 2026-08-25. Upgrading means
       nothing without somewhere to equip the result.
 
 - [ ] **Key rebinding** — added 2026-08-26. Fourteen bindings is past the
