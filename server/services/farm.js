@@ -10,21 +10,11 @@
 import pool from '../db/pool.js';
 import { serviceError } from './errors.js';
 import { spendStack, gainStack } from './stack.js';
+import { TIME_SCALE } from '../config.js';
 
 // 한 번 심을 때 씨앗 한 개를 쓴다. 표로 뺄 수도 있었지만 작물마다 다를 이유가
 // 아직 없어서 코드 상수로 둔다 — 씨앗 반환 확률을 코드에 둔 것과 같은 기준이다.
 const SEED_PER_PLANT = 1;
-
-// 성장 배속. 10이면 5분짜리 감자가 30초에 자란다. 개발 편의를 위한 값이라 작물별
-// 성장 시간(DB)과 달리 환경마다 다를 수 있고, 그래서 .env에 둔다.
-//
-// 폴백을 두지 않고 없으면 즉시 죽는다. DATABASE_URL에 || 를 붙이지 않은 것과 같은
-// 이유다 — 조용히 다른 속도로 도는 서버보다, 안 뜨는 서버가 낫다.
-const TIME_SCALE = Number(process.env.TIME_SCALE);
-
-if (!Number.isFinite(TIME_SCALE) || TIME_SCALE <= 0) {
-  throw new Error('TIME_SCALE must be a positive number (check server/.env)');
-}
 
 // 빈 칸 하나에 씨앗을 심는다. 칸이 차 있거나 씨앗이 모자라면 아무것도 바꾸지
 // 않고 throw한다.

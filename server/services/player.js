@@ -5,9 +5,10 @@
 // 템플릿으로 들고 있으므로, 여기서 또 보내면 같은 사실을 두 번 보내는 셈이다.
 
 import pool from '../db/pool.js';
+import { TIME_SCALE } from '../config.js';
 
 export async function getPlayer(playerId) {
-  const [player, gear, slots, stacks] = await Promise.all([
+  const [player, gear, slots, stacks, plots] = await Promise.all([
     pool.query(
       `SELECT gold, highest_tier_cleared AS "highestTierCleared"
          FROM player
@@ -41,6 +42,27 @@ export async function getPlayer(playerId) {
         ORDER BY stack_template_id`,
       [playerId],
     ),
+
+    // 밭 25칸은 항상 25행이다. 빈 칸도 행으로 있으므로 화면은 이 배열만 훑으면
+    // 격자를 다 그릴 수 있다.
+    //
+    // readyAt은 저장된 값이 아니라 여기서 계산한 것이다. planted_at은 DB에 있고
+    // growth_time은 crop_template에 있어서, 둘을 아는 쪽이 서버뿐이다. 클라이언트에
+    // 계산식을 옮기면 배속과 성장 규칙이 두 곳에 생긴다.
+    //
+    // 빈 칸은 crop_template_id가 NULL이라 LEFT JOIN이 짝을 못 찾고, 그 행의
+    // planted_at도 readyAt도 NULL로 나간다. "비어 있다"가 그대로 표현된다.
+    pool.query(
+      `SELECT p.plot_number      AS "plotNumber",
+              p.crop_template_id AS "cropTemplateId",
+              p.planted_at       AS "plantedAt",
+              p.planted_at + c.growth_time / $2 AS "readyAt"
+         FROM player_plot p
+         LEFT JOIN crop_template c ON c.crop_template_id = p.crop_template_id
+        WHERE p.player_id = $1
+        ORDER BY p.plot_number`,
+      [playerId, TIME_SCALE],
+    ),
   ]);
 
   // 로그인이 붙기 전이라 이 경우는 사실상 일어나지 않지만, 없는 플레이어를
@@ -67,5 +89,6 @@ export async function getPlayer(playerId) {
     gear: gear.rows,
     equipped,
     stacks: stacks.rows,
+    plots: plots.rows,
   };
 }
