@@ -4,9 +4,14 @@ import { attemptUpgrade } from './services/upgrade.js';
 import { getTemplates } from './services/templates.js';
 import { getPlayer } from './services/player.js';
 import { equipGear } from './services/equip.js';
+import { plantSeed } from './services/farm.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
+
+// 요청 본문의 JSON을 파싱해 req.body에 꽂아준다. 라우트 등록보다 위에 있어야
+// 한다 — 미들웨어는 이 줄 아래에 등록된 라우트에만 걸린다.
+app.use(express.json());
 
 // 로그인이 아직 없다. design-backlog.md §4에서 Google OAuth로 미뤘고, 그때까지
 // 모든 요청은 seed.sql이 넣어둔 한 명의 것이다. 인증이 들어오면 이 상수가
@@ -96,6 +101,48 @@ app.put('/api/gear/:gearInstanceId/equip', async (req, res) => {
       res.status(500).json({ reason: 'internal_error' });
     } else {
       res.status(status).json({ reason: err.reason });
+    }
+  }
+});
+
+// 심기. 강화와 같은 POST다 — 두 번 누르면 씨앗이 두 번 나가야 하므로 멱등하지
+// 않고, 찬 칸에 다시 심는 것은 성공이 아니라 거절이다.
+//
+// 강화와 달리 body가 있다. 클라이언트가 정할 것이 "어느 칸"과 "무슨 작물" 둘이고,
+// 앞은 대상이라 URL에, 뒤는 그 대상에 무엇을 할지라 body에 담긴다. 씨앗 종류는
+// 여기 없다 — crop_template이 정하는 값이라 서버가 읽는다.
+app.post('/api/plots/:plotNumber/plant', async (req, res) => {
+  const plotNumber = Number(req.params.plotNumber);
+
+  // 강화와 같은 가드다. 1~25 범위 검사는 하지 않는데, 그건 서비스가 행을 못
+  // 찾는 것으로 이미 걸러지기 때문이다 — 여기서 막을 것은 pg가 22P02로 터질
+  // 'abc' 같은 값뿐이다.
+  if (!Number.isInteger(plotNumber)) {
+    return res.status(404).json({ reason: 'plot_not_found' });
+  }
+
+  // body가 아예 없으면 express 5는 req.body를 undefined로 둔다. ?. 없이 읽으면
+  // TypeError가 나고, try 바깥이라 아래 catch도 못 잡아 500으로 보고된다.
+  //
+  // 없는 작물 번호는 404지만 이쪽은 400이다. 필드가 빠졌거나 타입이 틀린 것은
+  // 서버 상태와 충돌한 게 아니라 요청 자체가 규격을 어긴 경우다.
+  const cropTemplateId = Number(req.body?.cropTemplateId);
+
+  if (!Number.isInteger(cropTemplateId)) {
+    return res.status(400).json({ reason: 'invalid_body' });
+  }
+
+  try {
+    res.status(200).json(await plantSeed(PLAYER_ID, plotNumber, cropTemplateId));
+  } catch (err) {
+    const status = err.status ?? 500;
+
+    if (status === 500) {
+      console.error('plant failed:', err);
+      res.status(500).json({ reason: 'internal_error' });
+    } else {
+      // 씨앗이 모자랐을 때 spendStack이 실은 details가 여기로 나온다.
+      res.status(status).json({ reason: err.reason, details: err.details });
     }
   }
 });
