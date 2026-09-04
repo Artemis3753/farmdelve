@@ -10,13 +10,7 @@
 //     없고, "무기 없이 던전 입장" 같은 예외 상황도 생기지 않는다.
 
 import pool from '../db/pool.js';
-
-function equipError(status, reason) {
-  const err = new Error(reason);
-  err.status = status;
-  err.reason = reason;
-  return err;
-}
+import { serviceError } from './errors.js';
 
 export async function equipGear(playerId, gearInstanceId) {
   // 이 장비가 존재하는지, 이 플레이어의 것인지, 그리고 어느 칸에 들어가는지를
@@ -32,7 +26,7 @@ export async function equipGear(playerId, gearInstanceId) {
   // 없는 장비와 남의 장비를 같은 404로 합친다. 강화 쪽과 같은 이유로,
   // 구분해서 알려주면 "이 번호는 존재한다"가 새어 나간다.
   if (found.rowCount === 0) {
-    throw equipError(404, 'gear_not_found');
+    throw serviceError(404, 'gear_not_found');
   }
 
   const { slot } = found.rows[0];

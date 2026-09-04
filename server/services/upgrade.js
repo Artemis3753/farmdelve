@@ -8,76 +8,8 @@
 //   - 주사위는 서버가 굴린다. 클라이언트는 "어느 장비"만 말할 수 있다.
 
 import pool from '../db/pool.js';
-
-// throw할 에러에 응답 코드를 미리 붙여 둔다. 라우트는 err.status를 그대로 쓰고,
-// status가 없는 에러 — pg가 던진 것, 코드 버그 — 는 500으로 흘려보내면 된다.
-//
-// 이름을 code가 아니라 reason으로 한 이유: pg의 에러 객체가 이미 code를 쓴다
-// (SQLSTATE, '23514' 같은 값). 같은 이름을 겹쳐 쓰면 어느 쪽 code인지 헷갈린다.
-function upgradeError(status, reason, details) {
-  const err = new Error(reason);
-  err.status = status;
-  err.reason = reason;
-  err.details = details;
-  return err;
-}
-
-// 재료 한 종류를 잠그고, 확인하고, 소모한다. crest와 정제 재료 둘에 대해
-// 똑같은 일을 하므로 함수로 묶었다.
-//
-// 소모하고 남은 개수를 돌려준다 — 응답에 실어야 클라이언트가 가방 숫자를
-// 다시 조회하지 않아도 되기 때문이다.
-async function spendStack(client, playerId, stackTemplateId, need) {
-  // FOR UPDATE가 이 행을 트랜잭션이 끝날 때까지 잠근다. 같은 행을 노리는 다른
-  // 요청은 이 SELECT에서 멈춰 서서 기다리므로, 아래의 "확인하고 → 깎는" 사이로
-  // 끼어들 수 없다. 버튼을 두 번 눌러 요청이 겹쳐도 같은 재료를 두 번 셈하지
-  // 않는 이유가 이 한 줄이다. 재료가 두 번 나가는 것 자체는 막지 않는다 —
-  // 정당한 두 번째 요청이므로 그건 클라이언트의 busy가 할 일이다.
-  const held = await client.query(
-    `SELECT amount FROM player_stack
-      WHERE player_id = $1 AND stack_template_id = $2
-      FOR UPDATE`,
-    [playerId, stackTemplateId],
-  );
-
-  // 행이 아예 없으면 0개 가진 것이다. schema.sql이 CHECK (amount > 0)로 0을
-  // 금지하고 있어서, 다 쓴 재료는 0인 행이 아니라 사라진 행으로 남는다.
-  //
-  // rows[0]?.amount 의 ?. 는 "앞이 없으면 거기서 멈추고 undefined",
-  // ?? 0 은 "왼쪽이 undefined나 null이면 0을 쓴다"는 뜻이다.
-  const amount = held.rows[0]?.amount ?? 0;
-
-  // details에 need와 held를 싣는 건 FOR UPDATE로 이미 읽어둔 값이라 공짜이기
-  // 때문이다. "3개 필요한데 1개 있음"이 그대로 409 응답에 담긴다.
-  if (amount < need) {
-    throw upgradeError(409, 'insufficient_materials', {
-      stackTemplateId,
-      need,
-      held: amount,
-    });
-  }
-
-  // 딱 맞게 다 쓰는 경우. UPDATE로 0을 만들면 CHECK (amount > 0)에 걸려 DB
-  // 에러가 난다. 그래서 깎는 게 아니라 행을 지운다.
-  if (amount === need) {
-    await client.query(
-      `DELETE FROM player_stack
-        WHERE player_id = $1 AND stack_template_id = $2`,
-      [playerId, stackTemplateId],
-    );
-    return 0;
-  }
-
-  // 여기까지 왔으면 쓰고도 남는 경우다.
-  // client.query의 두 번째 인자는 $1 $2 $3 에 순서대로 들어갈 값의 배열이다.
-  await client.query(
-    `UPDATE player_stack SET amount = amount - $3
-      WHERE player_id = $1 AND stack_template_id = $2`,
-    [playerId, stackTemplateId, need],
-  );
-
-  return amount - need;
-}
+import { serviceError } from './errors.js';
+import { spendStack } from './stack.js';
 
 // 강화를 한 번 시도한다. 성공이든 실패든 재료는 나가고, 그 결과를 돌려준다.
 // 재료가 모자라거나 이미 +10이면 아무것도 소모하지 않고 throw한다.
@@ -102,7 +34,7 @@ export async function attemptUpgrade(playerId, gearInstanceId) {
     // 없는 장비와 남의 장비가 같은 결과로 합쳐진다. 둘을 구분해서 알려주면
     // "이 번호는 존재하긴 한다"가 새어 나가므로 일부러 합친다.
     if (gear.rowCount === 0) {
-      throw upgradeError(404, 'gear_not_found');
+      throw serviceError(404, 'gear_not_found');
     }
 
     const currentLevel = gear.rows[0].upgrade_level;
@@ -110,7 +42,7 @@ export async function attemptUpgrade(playerId, gearInstanceId) {
     // 이미 만렙이면 더 올릴 수 없다. 상한 10은 schema.sql의
     // gear_instance.upgrade_level CHECK와 같은 숫자여야 한다.
     if (currentLevel >= 10) {
-      throw upgradeError(409, 'already_max_level', { upgradeLevel: currentLevel });
+      throw serviceError(409, 'already_max_level', { upgradeLevel: currentLevel });
     }
 
     // 비용표의 한 행은 "n-1에서 n으로 올리는 값"이라 지금 단계가 아니라 목표
