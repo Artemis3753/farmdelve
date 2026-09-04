@@ -9,11 +9,22 @@
 
 import pool from '../db/pool.js';
 import { serviceError } from './errors.js';
-import { spendStack } from './stack.js';
+import { spendStack, gainStack } from './stack.js';
 
 // 한 번 심을 때 씨앗 한 개를 쓴다. 표로 뺄 수도 있었지만 작물마다 다를 이유가
 // 아직 없어서 코드 상수로 둔다 — 씨앗 반환 확률을 코드에 둔 것과 같은 기준이다.
 const SEED_PER_PLANT = 1;
+
+// 성장 배속. 10이면 5분짜리 감자가 30초에 자란다. 개발 편의를 위한 값이라 작물별
+// 성장 시간(DB)과 달리 환경마다 다를 수 있고, 그래서 .env에 둔다.
+//
+// 폴백을 두지 않고 없으면 즉시 죽는다. DATABASE_URL에 || 를 붙이지 않은 것과 같은
+// 이유다 — 조용히 다른 속도로 도는 서버보다, 안 뜨는 서버가 낫다.
+const TIME_SCALE = Number(process.env.TIME_SCALE);
+
+if (!Number.isFinite(TIME_SCALE) || TIME_SCALE <= 0) {
+  throw new Error('TIME_SCALE must be a positive number (check server/.env)');
+}
 
 // 빈 칸 하나에 씨앗을 심는다. 칸이 차 있거나 씨앗이 모자라면 아무것도 바꾸지
 // 않고 throw한다.
@@ -88,6 +99,119 @@ export async function plantSeed(playerId, plotNumber, cropTemplateId) {
         plantedAt: planted.rows[0].planted_at,
       },
       seedStack: { stackTemplateId: seedId, amount: seedLeft },
+    };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// 다 자란 칸 하나를 거둔다. 수확물과 씨앗이 가방에 들어가고 골드가 늘고 칸이 빈다.
+//
+// 심기가 하나를 깎았다면 이쪽은 셋을 늘린다. 그래서 잠글 행도 늘어나는데,
+// 순서는 넓은 것에서 좁은 것으로 통일한다 — player → 밭 칸 → 스택.
+export async function harvestCrop(playerId, plotNumber) {
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // 골드를 바꿀 것이므로 player 행을 먼저 잠근다. 아직 쓰지 않는 gold를 굳이
+    // 여기서 읽는 이유는, 이 SELECT 자체가 잠금을 거는 수단이기 때문이다.
+    const player = await client.query(
+      `SELECT gold FROM player WHERE player_id = $1 FOR UPDATE`,
+      [playerId],
+    );
+
+    if (player.rowCount === 0) {
+      throw serviceError(404, 'player_not_found');
+    }
+
+    // 칸과 작물 정의를 한 번에 읽는다. LEFT JOIN인 이유가 중요하다 — 그냥 JOIN을
+    // 쓰면 빈 칸(crop_template_id가 NULL)일 때 결과가 0행이 되어, "없는 칸"과
+    // "빈 칸"이 한 덩어리로 뭉개진다. 둘은 404와 409로 갈라야 하는 다른 상황이다.
+    //
+    // FOR UPDATE OF p 는 "잠글 것은 player_plot 쪽 행뿐"이라는 뜻이다. 그냥
+    // FOR UPDATE라고 쓰면 crop_template 행까지 잠그는데, 그건 아무도 바꾸지 않는
+    // 정의 테이블이라 잠글 이유가 없다.
+    //
+    // 성장 판정을 SQL이 한다. 심은 시각도 성장 기간도 DB에 있으니 거기서 끝내는
+    // 것이 자연스럽고, 서버 시계와 DB 시계가 어긋나는 경우가 아예 사라진다.
+    const plot = await client.query(
+      `SELECT p.crop_template_id,
+              c.crop_stack_template_id, c.seed_stack_template_id,
+              c.crop_amount, c.harvest_gold,
+              p.planted_at + c.growth_time / $3 <= now() AS ready
+         FROM player_plot p
+         LEFT JOIN crop_template c ON c.crop_template_id = p.crop_template_id
+        WHERE p.player_id = $1 AND p.plot_number = $2
+        FOR UPDATE OF p`,
+      [playerId, plotNumber, TIME_SCALE],
+    );
+
+    if (plot.rowCount === 0) {
+      throw serviceError(404, 'plot_not_found');
+    }
+
+    const {
+      crop_template_id: cropTemplateId,
+      crop_stack_template_id: cropStackId,
+      seed_stack_template_id: seedStackId,
+      crop_amount: cropAmount,
+      harvest_gold: harvestGold,
+      ready,
+    } = plot.rows[0];
+
+    // 빈 칸을 거두는 것은 실패다. 심기가 찬 칸을 거절한 것과 짝이 되는 자리다.
+    if (cropTemplateId === null) {
+      throw serviceError(409, 'plot_empty');
+    }
+
+    if (!ready) {
+      throw serviceError(409, 'not_ready');
+    }
+
+    // 씨앗 반환은 서버가 굴린다 — 강화의 주사위와 같은 자리다.
+    //
+    // 두 판정이 독립이라 둘 다 터질 수 있다. 그래서 분포는 1개 76% / 2개 19% /
+    // 3개 4% / 4개 1%이고, 기댓값은 1.3이다. 배타 갈래로 짜도 기댓값은 같지만
+    // 4개가 안 나온다 — 드문 대박을 남기려고 이쪽을 골랐다 (2026-09-04).
+    const seedGain = 1 + (Math.random() < 0.2 ? 1 : 0) + (Math.random() < 0.05 ? 2 : 0);
+
+    // 셋을 늘린다. 순서는 잠금 순서와 무관하다 — player 행은 이미 위에서 잡았고,
+    // 스택 둘은 서로 다른 행이라 어느 쪽이 먼저든 상관없다.
+    const cropLeft = await gainStack(client, playerId, cropStackId, cropAmount);
+    const seedLeft = await gainStack(client, playerId, seedStackId, seedGain);
+
+    const gold = await client.query(
+      `UPDATE player SET gold = gold + $2
+        WHERE player_id = $1
+        RETURNING gold`,
+      [playerId, harvestGold],
+    );
+
+    // 칸을 비운다. 둘을 함께 NULL로 만들어야 한다 — 짝을 이뤄야 한다는 CHECK가
+    // 한쪽만 비우는 것을 거절한다.
+    await client.query(
+      `UPDATE player_plot
+          SET crop_template_id = NULL, planted_at = NULL
+        WHERE player_id = $1 AND plot_number = $2`,
+      [playerId, plotNumber],
+    );
+
+    await client.query('COMMIT');
+
+    return {
+      // 거두고 나면 빈 칸이다. 심기 응답과 같은 모양을 유지해서 클라이언트가
+      // 두 응답을 같은 코드로 처리할 수 있게 한다.
+      plot: { plotNumber, cropTemplateId: null, plantedAt: null },
+      stacks: [
+        { stackTemplateId: cropStackId, amount: cropLeft },
+        { stackTemplateId: seedStackId, amount: seedLeft },
+      ],
+      gold: gold.rows[0].gold,
     };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});

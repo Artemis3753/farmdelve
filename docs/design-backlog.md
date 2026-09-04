@@ -3,7 +3,7 @@
 Working document. Tracks what is decided, what is still open, and what is
 deliberately out of scope. Updated as design sessions go.
 
-Last updated: 2026-09-03
+Last updated: 2026-09-04
 
 ---
 
@@ -44,10 +44,14 @@ Last updated: 2026-09-03
 - **Planting and harvesting are both per-plot**, one POST each (2026-09-03).
   Neither is idempotent — planting into an occupied plot and harvesting an
   empty one are both refused, the same 409 boundary upgrading uses.
-- **Harvesting returns seeds** (2026-09-03): one guaranteed, plus one more at
-  20% and two more at 5%, an expected 1.3 per harvest. A seed shop was the
-  alternative and would have given gold its only sink, but it costs a screen
-  and a purchase API, so it is deferred rather than rejected (see §4).
+- **Harvesting returns seeds** (2026-09-03): one guaranteed, plus an
+  independent 20% for one more and 5% for two more. Both can land, so a
+  harvest yields one to four seeds — 76/19/4/1 percent — for an expected
+  1.3. The rolls were left independent rather than made exclusive
+  (2026-09-04): the expected value is the same either way, and the rare
+  four is worth keeping. A seed shop was the alternative and would have
+  given gold its only sink, but it costs a screen and a purchase API, so
+  it is deferred rather than rejected (see §4).
   Because the expectation is above one, seeds stop being the binding
   constraint over time and the real limit becomes plots × growth time.
 - Farm plot expansion: deferred (see §4).

@@ -1,6 +1,7 @@
-// 가방(player_stack)에서 재료를 깎는 일. 강화가 crest와 정제 재료를 태우고,
+// 가방(player_stack)을 깎고 늘리는 일. 강화가 crest와 정제 재료를 태우고,
 // 심기가 씨앗을 태우고, 정제가 원재료를 태운다 — 세 곳이 똑같은 세 갈래
 // (부족 / 딱 맞음 / 남음)를 밟으므로 upgrade.js에서 떼어냈다 (2026-09-04).
+// 수확이 생기면서 반대 방향인 gainStack이 나란히 들어왔다.
 //
 // 트랜잭션을 여기서 열지 않는 것이 핵심이다. client를 인자로 받는 이유는
 // 부르는 쪽의 트랜잭션 안에서 같이 커밋되거나 같이 롤백되어야 하기 때문이다.
@@ -63,4 +64,34 @@ export async function spendStack(client, playerId, stackTemplateId, need) {
   );
 
   return amount - need;
+}
+
+// 재료 한 종류를 가방에 넣는다. spendStack의 반대 방향이고, 늘어난 뒤의 개수를
+// 돌려준다.
+//
+// spendStack과 달리 FOR UPDATE가 없다. 저쪽은 "읽고 → 충분한지 판단하고 →
+// 깎는" 세 걸음이라 그 사이에 끼어들 틈이 있었지만, 넣는 데는 판단할 것이
+// 없어서 한 문장으로 끝난다. 그 한 문장이 원자적이라 잠글 필요가 없다.
+export async function gainStack(client, playerId, stackTemplateId, gain) {
+  // ON CONFLICT는 "이 INSERT가 제약에 걸리면 대신 이걸 해라"다. 여기서는
+  // player_stack의 기본 키 (player_id, stack_template_id)가 겹칠 때,
+  // 즉 이미 갖고 있는 재료일 때 걸린다.
+  //
+  // EXCLUDED는 "넣으려다 막힌 그 행"을 가리키는 이름이다. 그래서
+  // EXCLUDED.amount는 위 VALUES의 $3, 곧 이번에 늘어날 개수를 뜻한다.
+  //
+  // DO UPDATE에 WHERE가 없는 것은 부딪친 그 행 하나만 고치도록 이미 정해져
+  // 있기 때문이다. 가방 전체가 아니라 그 재료 행만 바뀐다.
+  const row = await client.query(
+    `INSERT INTO player_stack (player_id, stack_template_id, amount)
+          VALUES ($1, $2, $3)
+     ON CONFLICT (player_id, stack_template_id)
+     DO UPDATE SET amount = player_stack.amount + EXCLUDED.amount
+       RETURNING amount`,
+    [playerId, stackTemplateId, gain],
+  );
+
+  // INSERT로 갔든 UPDATE로 갔든 RETURNING이 결과 행을 준다. 그래서 어느 쪽으로
+  // 갈렸는지 코드가 알 필요가 없다.
+  return row.rows[0].amount;
 }

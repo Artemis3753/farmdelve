@@ -4,7 +4,7 @@ import { attemptUpgrade } from './services/upgrade.js';
 import { getTemplates } from './services/templates.js';
 import { getPlayer } from './services/player.js';
 import { equipGear } from './services/equip.js';
-import { plantSeed } from './services/farm.js';
+import { plantSeed, harvestCrop } from './services/farm.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -142,6 +142,29 @@ app.post('/api/plots/:plotNumber/plant', async (req, res) => {
       res.status(500).json({ reason: 'internal_error' });
     } else {
       // 씨앗이 모자랐을 때 spendStack이 실은 details가 여기로 나온다.
+      res.status(status).json({ reason: err.reason, details: err.details });
+    }
+  }
+});
+
+// 거두기. 심기와 짝이라 같은 POST이고, body는 없다 — 거둘 대상이 칸 하나뿐이라
+// URL에 다 담긴다. 무엇이 나올지는 서버가 정하므로 클라이언트가 보탤 말이 없다.
+app.post('/api/plots/:plotNumber/harvest', async (req, res) => {
+  const plotNumber = Number(req.params.plotNumber);
+
+  if (!Number.isInteger(plotNumber)) {
+    return res.status(404).json({ reason: 'plot_not_found' });
+  }
+
+  try {
+    res.status(200).json(await harvestCrop(PLAYER_ID, plotNumber));
+  } catch (err) {
+    const status = err.status ?? 500;
+
+    if (status === 500) {
+      console.error('harvest failed:', err);
+      res.status(500).json({ reason: 'internal_error' });
+    } else {
       res.status(status).json({ reason: err.reason, details: err.details });
     }
   }
