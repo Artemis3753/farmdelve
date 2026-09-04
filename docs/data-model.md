@@ -74,7 +74,7 @@ points earned.
 
 | Table | Holds |
 |---|---|
-| `crop_template` | How a crop grows: growth duration, what it yields on harvest and how much, sale value. Points at the `stack_template` rows for its seed and its produce. |
+| `crop_template` | How a crop grows: growth duration, what it yields on harvest and how much, and the gold that harvest pays. Not a sale price — there is no shop to sell into (see backlog §4). Points at the `stack_template` rows for its seed and its produce. |
 | `player_plot` | One tile of one player's farm: which plot, what is planted in it, and **when it was planted**. |
 | `recipe` | One recipe: what goes in, what comes out. Single table, because all three recipes take exactly one ingredient type. Splitting into recipe plus ingredient rows is the textbook shape and is what to do the day a recipe needs two ingredients — not before. |
 

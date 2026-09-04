@@ -3,7 +3,7 @@
 Working document. Tracks what is decided, what is still open, and what is
 deliberately out of scope. Updated as design sessions go.
 
-Last updated: 2026-08-31
+Last updated: 2026-09-03
 
 ---
 
@@ -37,6 +37,19 @@ Last updated: 2026-08-31
   the main gold source.
 - **Seeds are separate items from produce** (2026-08-25), Stardew-style:
   you plant a potato seed and harvest a potato.
+- **The field is 5×5 = 25 plots** (2026-09-03). Four crops competing still
+  leaves six plots each, and a field given over to Ironroot produces roughly
+  one weapon's worth of upgrade material in three hours. A 3×3 field cannot
+  run four crops at once, which is what ruled it out.
+- **Planting and harvesting are both per-plot**, one POST each (2026-09-03).
+  Neither is idempotent — planting into an occupied plot and harvesting an
+  empty one are both refused, the same 409 boundary upgrading uses.
+- **Harvesting returns seeds** (2026-09-03): one guaranteed, plus one more at
+  20% and two more at 5%, an expected 1.3 per harvest. A seed shop was the
+  alternative and would have given gold its only sink, but it costs a screen
+  and a purchase API, so it is deferred rather than rejected (see §4).
+  Because the expectation is above one, seeds stop being the binding
+  constraint over time and the real limit becomes plots × growth time.
 - Farm plot expansion: deferred (see §4).
 
 ### Consumables (2026-08-25)
@@ -87,6 +100,13 @@ Last updated: 2026-08-31
 - **Failure spends the materials and leaves the upgrade level alone.** No
   downgrade, no destruction. Same reasoning as dying in a dungeon: this
   project does not punish.
+- **Upgrading will also cost gold** (2026-09-03), decided but not built.
+  Gold currently has no sink anywhere: it arrives from harvests and dungeon
+  clears and never leaves, which makes both rewards meaningless. Upgrading is
+  the natural place for it because it is the one action taken repeatedly.
+  Building it reopens `attemptUpgrade` — `player` has to take a place in the
+  lock order, which is gear then materials today — so it waits until the farm
+  slice is finished and the review of that function is done.
 - Stats: `base_stat × (1 + 0.1 × upgrade_level)` — +10 doubles the base.
 - Server-authoritative.
 - **Expected cost to +10**, failure rates included: 10 T1 crests, ~14.3 T2,
@@ -594,7 +614,7 @@ Non-blocking:
   happens if the browser closes mid-run?
 - Drop details — per-tier rates, duplicate handling, how many items one
   clear can yield.
-- Greenhouse screen contents, and the field's grid size.
+- Greenhouse screen contents. The grid size itself is settled — 25 plots.
 - Pandemic formula specifics.
 - In-game calendar (days, seasons) or real elapsed time only?
 - Farm-themed monster roster: crop creatures, crop thieves, and so on.
@@ -606,8 +626,10 @@ Non-blocking:
 ### Farm
 
 - [x] Crop growth times
-- [ ] Field grid size, and the Greenhouse screen's contents
-- [ ] Planting and harvesting interactions
+- [x] **Field grid size** — 5×5, settled 2026-09-03
+- [x] **Planting and harvesting interactions** — per-plot, one POST each
+- [x] **Where seeds come from** — harvesting returns them
+- [ ] The Greenhouse screen's contents
 
 ### Combat
 
@@ -659,6 +681,15 @@ Table list is settled — see `data-model.md`. What is left:
 ## 4. Deferred / out of scope
 
 - **Farm plot expansion** — good idea, add later.
+- **Shops, all of them** (2026-09-03). A seed shop came up first, since gold
+  has no sink and buying seeds would have given it one. Equipment and
+  cosmetic wardrobe skins are the same shape and are parked with it. Each
+  costs a screen plus a purchase API, and none of them unblocks anything
+  else — the farm slice needed a seed supply, and harvesting returning seeds
+  answers that for nothing. Note this is a scope call, not the rejection in
+  §1 *How gear is obtained*: that one turned down a shop as the way to
+  **obtain gear**, and its reasoning ("nothing to farm for") does not carry
+  over to seeds. Gold gets its sink from upgrade costs instead (see §1).
 - **Accessory gear slots** — added later as a chance drop from dungeons.
 - **Accounts and login** — **Google OAuth, confirmed as the approach, but
   deferred.** Development runs against a hardcoded player 1 for now. Auth
