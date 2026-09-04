@@ -5,6 +5,7 @@ import { getTemplates } from './services/templates.js';
 import { getPlayer } from './services/player.js';
 import { equipGear } from './services/equip.js';
 import { plantSeed, harvestCrop } from './services/farm.js';
+import { craftItem } from './services/craft.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -163,6 +164,29 @@ app.post('/api/plots/:plotNumber/harvest', async (req, res) => {
 
     if (status === 500) {
       console.error('harvest failed:', err);
+      res.status(500).json({ reason: 'internal_error' });
+    } else {
+      res.status(status).json({ reason: err.reason, details: err.details });
+    }
+  }
+});
+
+// 정제. 강화·심기와 같은 POST이고 body는 없다 — 무엇이 들어가고 무엇이 나오는지는
+// recipe가 정하므로 클라이언트가 말할 것은 레시피 번호뿐이다.
+app.post('/api/craft/:recipeId', async (req, res) => {
+  const recipeId = Number(req.params.recipeId);
+
+  if (!Number.isInteger(recipeId)) {
+    return res.status(404).json({ reason: 'recipe_not_found' });
+  }
+
+  try {
+    res.status(200).json(await craftItem(PLAYER_ID, recipeId));
+  } catch (err) {
+    const status = err.status ?? 500;
+
+    if (status === 500) {
+      console.error('craft failed:', err);
       res.status(500).json({ reason: 'internal_error' });
     } else {
       res.status(status).json({ reason: err.reason, details: err.details });
