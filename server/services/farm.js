@@ -74,19 +74,27 @@ export async function plantSeed(playerId, plotNumber, cropTemplateId) {
       `UPDATE player_plot
           SET crop_template_id = $3, planted_at = NOW()
         WHERE player_id = $1 AND plot_number = $2
-        RETURNING planted_at`,
-      [playerId, plotNumber, cropTemplateId],
+        RETURNING planted_at,
+                  planted_at + (SELECT growth_time FROM crop_template
+                                 WHERE crop_template_id = $3) / $4 AS "readyAt"`,
+      [playerId, plotNumber, cropTemplateId, TIME_SCALE],
     );
 
     await client.query('COMMIT');
 
     // 바뀐 것만 싣는다 — 칸 하나와 줄어든 씨앗 하나. 밭 25칸을 통째로 돌려주는
     // 것은 화면을 처음 열 때 쓰는 GET의 일이고, 쓰기 API는 델타만 준다.
+    //
+    // readyAt을 여기서 같이 만들어 보내는 이유: 화면이 plantedAt에 성장 시간을
+    // 더해 스스로 구할 수도 있지만, 그러면 "언제 다 자라는가"라는 규칙이 서버와
+    // 클라이언트 두 곳에 생긴다. player.js가 이미 같은 계산을 하고 있으므로
+    // 규칙은 서버 안에만 둔다.
     return {
       plot: {
         plotNumber,
         cropTemplateId,
         plantedAt: planted.rows[0].planted_at,
+        readyAt: planted.rows[0].readyAt,
       },
       seedStack: { stackTemplateId: seedId, amount: seedLeft },
     };

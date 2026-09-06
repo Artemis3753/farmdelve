@@ -149,6 +149,66 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--code-bg);
+  /* 아이콘 위, 남은 시간 아래로 쌓는다. 칸이 60px 남짓이라 가로로는 못 놓는다. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.plot-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/* 고정폭 글꼴을 쓰는 이유는 멋이 아니다. 남은 시간이 1초마다 바뀌는데 일반
+   글꼴은 숫자마다 너비가 달라서, 1이 8로 바뀌는 순간 글자가 좌우로 흔들린다. */
+.plot-time {
+  font-family: var(--mono);
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* 빈 칸만 button이라 브라우저 기본 버튼 모양을 덮어야 한다. 심어진 칸은 div라
+   이 규칙이 안 걸린다. */
+button.plot {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* 씨앗을 안 골랐으면 못 누른다. 손 모양 커서까지 빼야 "지금은 안 된다"가 읽힌다. */
+button.plot:disabled {
+  cursor: default;
+}
+
+button.plot:enabled:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+/* 씨앗 칸도 누를 수 있게 button이 됐다. .slot이 크기와 테두리를 이미 정해서
+   여기서는 버튼 기본값만 지운다. */
+.seed-slot {
+  font: inherit;
+  color: inherit;
+  background: var(--code-bg);
+  cursor: pointer;
+}
+
+/* 0개인 씨앗. 사라지지 않고 흐려지는 이유는 "없다"와 "원래 없는 작물이다"를
+   가르기 위해서다 — 목록에서 빠지면 뭘 심을 수 있었는지도 같이 사라진다. */
+.seed-slot:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 손에 든 씨앗. 가방의 물건 든 칸과 같은 강조색을 쓴다. */
+.seed-selected {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
 }
 
 /* 던전 헤더 — 단수, 남은 시간, 진행도가 한 줄에 선다. */

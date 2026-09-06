@@ -61,9 +61,20 @@ function App() {
     )
   }
 
-  // 두 화면은 배치만 서 있다. 온실은 crop_template·player_plot을, 던전은
-  // 몬스터 수치와 그리드 크기를 기다린다 — 그래서 데이터를 아직 안 넘긴다.
-  if (screen === 'greenhouse') return <Greenhouse onLeave={goHome} />
+  if (screen === 'greenhouse') {
+    return (
+      <Greenhouse
+        templates={templates}
+        player={player}
+        onPlayerChange={setPlayer}
+        onLeave={goHome}
+      />
+    )
+  }
+
+  // 던전은 아직 배치만 되어 있고, 플레이어 상태를 바꾸는 기능이 없다.
+  // 그래서 onPlayerChange를 넘기지 않는다.
+  // 나중에 던전에서 장비를 잃거나 재료를 얻는 기능이 생기면 그때 추가하면 된다.
   if (screen === 'dungeon') return <Dungeon onLeave={goHome} />
 
 
