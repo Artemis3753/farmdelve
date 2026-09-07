@@ -774,5 +774,16 @@ Anything after it is a separate update, not "still finishing up."
       an interviewer opens cannot be in Korean. Written in English from the
       first screen rather than translated at the end: strings sit inline in
       JSX, and the cost of finding them all only grows with the screen
-      count. Code comments stay in Korean — they are for the author, not
-      the player.
+      count. Code comments are a separate question — see below.
+
+- [ ] **Code comments rewritten in English** — added 2026-09-07. Comments
+      are written in Korean while building, because they double as the
+      author's own notes on a first real pass through this stack. But the
+      reasoning they carry is the most valuable thing in this repository,
+      and the people it is written for cannot read Korean. Left to the end
+      rather than done as we go: the comments are still teaching material
+      while the code is being written, and the code is still moving.
+      **Not a translation.** What survives is why a choice was made, what
+      was rejected, and what constraint it leaves behind. Explanations of
+      what a language feature does come out — they were for the author, and
+      the reader already knows.
