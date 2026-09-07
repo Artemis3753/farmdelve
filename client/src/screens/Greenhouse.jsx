@@ -10,9 +10,9 @@ import { useState, useEffect } from 'react'
 // 같은 애니메이션을 다시 걸면 브라우저가 다시 돌리지 않는다.
 function Stars({ count, at }) {
   return (
-    // 별이 여덟이면 씨앗이 4개 나온 1%다. 크기와 거리를 CSS가 알아야 해서
+    // 별이 열둘이면 씨앗이 4개 나온 1%다. 크기와 거리를 CSS가 알아야 해서
     // 개수를 클래스로 한 번 더 옮긴다 — CSS는 count를 볼 수 없다.
-    <span className={`stars${count >= 8 ? ' stars-big' : ''}`} key={at}>
+    <span className={`stars${count >= 12 ? ' stars-big' : ''}`} key={at}>
       {Array.from({ length: count }, (_, i) => (
         // 별을 원 둘레에 고르게 나눠 세운다. CSS가 이 각도로 회전한 뒤 바깥으로
         // 밀어내므로, 별마다 x와 y를 따로 계산할 필요가 없다.
@@ -224,7 +224,7 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
     }
   }
 
-  // 별을 몇 개 그릴지. 4개는 두 주사위가 다 터진 1%라 8개, 3개는 4개.
+  // 별을 몇 개 그릴지. 4개는 두 주사위가 다 터진 1%라 12개, 3개는 6개.
   //
   // 잭팟이 아닌 경우가 0인 것은 방어다 — 아래에서 seeds >= 3일 때만 그리므로
   // 0이 실제로 쓰이지는 않지만, 무엇이 들어가든 상관없는 자리에 뜻이 없는 숫자를
@@ -232,7 +232,7 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
   //
   // message는 null일 수 있다. ?. 로 꺼낸 undefined는 어느 비교에도 false라
   // 그대로 마지막 갈래로 떨어진다.
-  const starCount = message?.seeds >= 4 ? 8 : message?.seeds === 3 ? 4 : 0
+  const starCount = message?.seeds >= 4 ? 12 : message?.seeds === 3 ? 6 : 0
 
   return (
     <div className="screen">
