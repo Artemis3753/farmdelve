@@ -3,6 +3,31 @@ import { useState, useEffect } from 'react'
 // 온실. 심고 거두는 일이 전부 여기서 일어난다 — 메인 화면에 보이는 밭은
 // 들어오는 문이고, 실제 작업대는 이 화면이다(백로그 2026-08-26에 갈라짐).
 
+// 잭팟이 터진 칸에서 퍼지는 별들. 밭 칸 안에 놓이며, 칸이 position: relative라
+// 여기의 절대 위치가 그 칸을 기준으로 잡힌다.
+//
+// at을 key로 받는 이유는 이 컴포넌트를 매번 새로 만들기 위해서다. 같은 요소에
+// 같은 애니메이션을 다시 걸면 브라우저가 다시 돌리지 않는다.
+function Stars({ count, at }) {
+  return (
+    // 별이 여덟이면 씨앗이 4개 나온 1%다. 크기와 거리를 CSS가 알아야 해서
+    // 개수를 클래스로 한 번 더 옮긴다 — CSS는 count를 볼 수 없다.
+    <span className={`stars${count >= 8 ? ' stars-big' : ''}`} key={at}>
+      {Array.from({ length: count }, (_, i) => (
+        // 별을 원 둘레에 고르게 나눠 세운다. CSS가 이 각도로 회전한 뒤 바깥으로
+        // 밀어내므로, 별마다 x와 y를 따로 계산할 필요가 없다.
+        <span
+          key={i}
+          className="star"
+          style={{ '--angle': `${(360 / count) * i}deg` }}
+        >
+          ⭐
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
   // 시간이 흐르는 것은 React 입장에서 아무 사건도 아니다. 아무도 알려주지 않으면
   // 다시 그릴 이유가 없어서 남은 시간이 멈춰 있다. 그래서 "지금"을 state에 담고
@@ -19,7 +44,23 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
   // 심고 나서도 풀지 않는다. 밭이 25칸이라 같은 작물을 여러 칸에 잇달아 심는 것이
   // 기본 동작이기 때문이다.
   const [selectedCropId, setSelectedCropId] = useState(null)
+
+  // 문자열 하나가 아니라 객체다. 거두기가 성공하면 글자만이 아니라 별을 몇 개
+  // 어떻게 그릴지도 함께 정해지는데, 그 둘은 항상 같이 바뀌므로 같이 둔다.
+  // 따로 두면 "메시지는 지웠는데 별은 남은" 상태를 만들 수 있다.
+  //
+  // { text, seeds } — seeds는 거두기가 성공했을 때만 있다.
   const [message, setMessage] = useState(null)
+
+  // 몇 번째 수확인가. 화면에 이 숫자를 그리지는 않는다 — 아래 메시지의 key로만
+  // 쓴다. 같은 요소에 같은 애니메이션을 다시 걸면 브라우저가 다시 돌리지 않아서,
+  // 잭팟이 연달아 터지면 두 번째가 조용해지는 것을 막으려는 것이다.
+  //
+  // Date.now()를 쓸 수도 있었지만 린터가 순수하지 않은 호출로 잡는다. 이벤트
+  // 핸들러 안이라 실제로는 안전한데, 린터는 이 함수가 언제 불리는지 알 수 없어서
+  // 보수적으로 막는다. 규칙이 틀렸다고 끄는 것보다, 애초에 순수한 값을 세는 쪽이
+  // 낫다고 판단했다 (2026-09-07).
+  const [harvestCount, setHarvestCount] = useState(0)
 
   useEffect(() => {
     // setInterval이 돌려주는 id를 받아둬야 한다. 없으면 멈출 방법이 사라진다.
@@ -87,7 +128,7 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
       // 409나 404는 fetch 입장에서 실패가 아니다. 응답이 정상적으로 도착했으므로
       // catch로 가지 않는다 — 상태 코드는 res.ok로 직접 봐야 한다.
       if (!res.ok) {
-        setMessage(`Rejected: ${data.reason}`)
+        setMessage({ text: `Rejected: ${data.reason}` })
         return
       }
 
@@ -107,7 +148,7 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
         stacks: mergeStack(prev.stacks, data.seedStack),
       }))
     } catch (err) {
-      setMessage(`Request failed: ${err.message}`)
+      setMessage({ text: `Request failed: ${err.message}` })
     }
   }
 
@@ -128,7 +169,7 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
       // 안 자란 칸을 눌렀을 때 여기로 온다 — not_ready. 화면에서 안 막기로 했으니
       // 서버의 거절 경로가 실제로 도는 것을 눈으로 보게 된다.
       if (!res.ok) {
-        setMessage(`Rejected: ${data.reason}`)
+        setMessage({ text: `Rejected: ${data.reason}` })
         return
       }
 
@@ -151,10 +192,47 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
           data.stacks[1],
         ),
       }))
+
+      // 무엇이 들어왔는지 한 줄로 알린다. 이름과 아이콘은 응답에 없고 templates에
+      // 있으므로 여기서 붙인다 — 서버가 같은 이름을 모든 응답에 싣지 않기로 한
+      // 결정의 대가이자 목적이다.
+      const cropStack = stackOf(data.stacks[0].stackTemplateId)
+      const seedStack = stackOf(data.stacks[1].stackTemplateId)
+
+      setMessage({
+        text:
+          `${cropStack.icon} ${cropStack.name} ×${data.gained.crop} · ` +
+          `+${data.gained.gold} gold · ` +
+          `${seedStack.icon} ×${data.gained.seeds}`,
+        seeds: data.gained.seeds,
+
+        // 별이 터질 자리. 메시지 줄에서 터뜨렸더니 <p>가 가로 폭을 다 차지해서
+        // 글자와 동떨어진 곳에서 터졌다. 어느 칸이 대박이었는지도 보이는 편이
+        // 나아서 칸으로 옮겼다 (2026-09-07).
+        plotNumber,
+      })
+
+      // 이 한 줄이 애니메이션을 다시 트리거한다. 값 자체는 아무 데도 안 보이고,
+      // 달라진다는 사실만이 일을 한다.
+      //
+      // 앞의 값을 받아 더하는 모양을 쓴다. onPlayerChange가 prev를 받는 것과
+      // 같은 이유다 — 지금 화면에 있는 숫자가 아니라 React가 들고 있는 최신 값에
+      // 더해야 연달아 눌렀을 때 세다 만 숫자가 나오지 않는다.
+      setHarvestCount((n) => n + 1)
     } catch (err) {
-      setMessage(`Request failed: ${err.message}`)
+      setMessage({ text: `Request failed: ${err.message}` })
     }
   }
+
+  // 별을 몇 개 그릴지. 4개는 두 주사위가 다 터진 1%라 8개, 3개는 4개.
+  //
+  // 잭팟이 아닌 경우가 0인 것은 방어다 — 아래에서 seeds >= 3일 때만 그리므로
+  // 0이 실제로 쓰이지는 않지만, 무엇이 들어가든 상관없는 자리에 뜻이 없는 숫자를
+  // 남기지 않는다.
+  //
+  // message는 null일 수 있다. ?. 로 꺼낸 undefined는 어느 비교에도 false라
+  // 그대로 마지막 갈래로 떨어진다.
+  const starCount = message?.seeds >= 4 ? 8 : message?.seeds === 3 ? 4 : 0
 
   return (
     <div className="screen">
@@ -173,8 +251,15 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
             화면은 이 배열만 훑으면 격자가 다 채워진다. */}
         <div className="field">
           {player.plots.map((plot) => {
+            // 이 칸에서 방금 잭팟이 터졌는가. 칸 번호까지 맞춰야 한다 — 빼먹으면
+            // 25칸이 한꺼번에 터진다.
+            const burst = message?.seeds >= 3 && message?.plotNumber === plot.plotNumber
+
             // 빈 칸은 심고, 찬 칸은 거둔다. 두 갈래가 다른 요청을 보내므로
             // button도 따로 그린다.
+            //
+            // 거둔 직후의 칸은 비어 있으므로 별도 이쪽에서 터진다. 심어진 칸에는
+            // 별을 안 그린다 — 거두면 반드시 비기 때문이다.
             if (plot.cropTemplateId === null) {
               return (
                 <button
@@ -185,7 +270,9 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
                   // 누를 수 있게 해놓고 거절하는 것보다 못 누르게 하는 편이 낫다.
                   disabled={selectedCropId === null}
                   onClick={() => handlePlant(plot.plotNumber)}
-                />
+                >
+                  {burst && <Stars count={starCount} at={harvestCount} />}
+                </button>
               )
             }
 
@@ -213,7 +300,23 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
             )
           })}
         </div>
-        {message && <p className="hint">{message}</p>}
+        {message && (
+          // 3개 이상이면 잭팟이다. 확률은 4%(3개) + 1%(4개) = 5%라 밭 한 바퀴에
+          // 평균 한 번쯤 나온다. 4개는 두 주사위가 다 터진 경우라 더 크게 알린다.
+          //
+          // key가 harvestCount라 거둘 때마다 새 요소가 되고, 그래서 잭팟이 연달아
+          // 나와도 매번 처음부터 터진다. 밭 25칸의 key={plot.plotNumber}와 정확히
+          // 반대 방향의 쓰임이다 — 거기서는 "같은 칸이니 재사용해"였고, 여기서는
+          // "다른 것이니 새로 만들어"다.
+          <p
+            key={harvestCount}
+            className={`hint${message.seeds >= 3 ? ' jackpot' : ''}${
+              message.seeds >= 4 ? ' jackpot-big' : ''
+            }`}
+          >
+            {message.text}
+          </p>
+        )}
       </section>
 
       <section>

@@ -210,6 +210,18 @@ export async function harvestCrop(playerId, plotNumber) {
         { stackTemplateId: seedStackId, amount: seedLeft },
       ],
       gold: gold.rows[0].gold,
+
+      // 위의 stacks와 gold는 "이제 얼마인가"이고, 이쪽은 "이번에 얼마가
+      // 늘었는가"다. 화면이 잔량끼리 빼서 구할 수도 있지만, 씨앗 개수는 서버가
+      // 굴린 주사위라 클라이언트가 역산할 값이 아니다 — 강화가 upgraded로
+      // 주사위 결과를 돌려주는 것과 같은 자리다.
+      gained: {
+        // gold는 이번에 더한 양이다. 위의 gold(잔액)와 이름이 겹치지만 다른
+        // 값이라, 어느 쪽을 쓸지는 이 중첩이 갈라 준다.
+        gold: harvestGold,
+        crop: cropAmount,
+        seeds: seedGain,
+      },
     };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
