@@ -160,6 +160,10 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
     <div className="screen">
       <div className="screen-header">
         <h1>Greenhouse</h1>
+        {/* 골드는 재료가 아니라 player의 컬럼 하나다. 그래서 가방에 섞지 않고
+            화면마다 같은 자리에 따로 세운다 — 재화가 드나드는 화면 어디서든
+            눈이 같은 곳을 보게 된다. */}
+        <span className="screen-gold">🪙 {player.gold}</span>
         <button type="button" onClick={onLeave}>Leave</button>
       </div>
 

@@ -18,6 +18,17 @@
   margin: 0;
 }
 
+/* margin-left: auto가 남는 가로 공간을 전부 왼쪽에 몰아준다. 그래서 제목은
+   왼쪽에, 골드와 Leave는 오른쪽 끝에 붙는다 — 화면 폭이 달라져도 유지된다.
+
+   고정폭 글꼴을 쓰는 것은 밭의 남은 시간과 같은 이유다. 골드는 거둘 때마다
+   자릿수가 늘어나는데, 일반 글꼴이면 숫자가 바뀔 때 옆의 Leave가 흔들린다. */
+.screen-gold {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
 /* 메인 화면의 18×10 격자. 손그림의 5×5 구역 넷이 여기 얹힌다.
    aspect-ratio로 칸을 정사각형에 가깝게 유지한다. */
 .main-grid {

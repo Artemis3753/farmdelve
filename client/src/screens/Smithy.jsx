@@ -83,6 +83,9 @@ function Smithy({ templates, player, onPlayerChange, onLeave }) {
     <div className="screen">
       <div className="screen-header">
         <h1>Smithy</h1>
+        {/* 강화에 골드 비용을 붙이기로 이미 정해 뒀다(백로그 2026-09-03). 그때
+            이 자리가 "얼마 남았나"를 보는 곳이 된다. */}
+        <span className="screen-gold">🪙 {player.gold}</span>
         <button type="button" onClick={onLeave}>Leave</button>
       </div>
 

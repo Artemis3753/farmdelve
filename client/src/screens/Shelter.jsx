@@ -73,6 +73,9 @@ function Shelter({ templates, player, onPlayerChange, onLeave }) {
     <div className="screen">
       <div className="screen-header">
         <h1>Shelter</h1>
+        {/* 아래 Materials가 스택을 보여주지만 골드는 스택이 아니다. 같은 화면에
+            있어도 다른 자리에 두는 이유가 그것이다. */}
+        <span className="screen-gold">🪙 {player.gold}</span>
         <button type="button" onClick={onLeave}>Leave</button>
       </div>
 
