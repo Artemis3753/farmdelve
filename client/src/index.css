@@ -7,6 +7,11 @@
   --accent: #aa3bff;
   --accent-bg: rgba(170, 59, 255, 0.1);
   --accent-border: rgba(170, 59, 255, 0.5);
+  /* "지금 할 수 있다"를 알리는 색. accent(보라)를 쓸 수 없어서 따로 둔다 —
+     보라는 이미 마우스를 올린 상태가 가져갔고, 두 뜻이 같은 색이면 다 큰 칸과
+     손이 얹힌 칸이 구별되지 않는다. */
+  --ready-bg: rgba(34, 160, 90, 0.12);
+  --ready-border: rgba(34, 160, 90, 0.6);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -40,6 +45,9 @@
     --accent: #c084fc;
     --accent-bg: rgba(192, 132, 252, 0.15);
     --accent-border: rgba(192, 132, 252, 0.5);
+    /* 어두운 바탕에서는 같은 초록이 탁해 보여서 한 단계 밝게 올린다. */
+    --ready-bg: rgba(74, 222, 128, 0.15);
+    --ready-border: rgba(74, 222, 128, 0.6);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;

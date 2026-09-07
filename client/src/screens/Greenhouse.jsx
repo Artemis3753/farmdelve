@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react'
 
 // 온실. 심고 거두는 일이 전부 여기서 일어난다 — 메인 화면에 보이는 밭은
 // 들어오는 문이고, 실제 작업대는 이 화면이다(백로그 2026-08-26에 갈라짐).
-//
-// 오늘은 심기까지다. 거두기는 다음 단계다.
 
 function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
   // 시간이 흐르는 것은 React 입장에서 아무 사건도 아니다. 아무도 알려주지 않으면
@@ -51,6 +49,26 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
     return `${m}:${String(s).padStart(2, '0')}`
   }
 
+  // 서버가 돌려준 스택 하나를 내 손의 목록에 반영한다.
+  //
+  // map 하나로는 안 되는 자리다. map은 있는 줄을 갈아끼울 뿐 배열의 길이를 못
+  // 바꾸는데, player_stack은 0개가 되면 행이 사라지는 설계라 처음 거두는 작물은
+  // prev.stacks에 아예 없다. 그대로 두면 서버가 보낸 수확물이 에러도 경고도 없이
+  // 사라진다.
+  //
+  // find가 아니라 some인 이유는, 여기서 필요한 것이 찾은 물건이 아니라 갈래를
+  // 가르는 판정 하나뿐이기 때문이다. 아래에서 같은 비교를 한 번 더 하게 되지만
+  // 스택 목록이 열 줄 남짓이라, 그 비용보다 읽기 쉬운 쪽을 골랐다.
+  const mergeStack = (stacks, updated) => {
+    const held = stacks.some((s) => s.stackTemplateId === updated.stackTemplateId)
+
+    // 둘 다 새 배열을 만든다. push로 원본을 늘리면 배열이 "그 배열" 그대로라
+    // React가 바뀐 것을 못 알아채고 화면을 다시 그리지 않는다.
+    return held
+      ? stacks.map((s) => (s.stackTemplateId === updated.stackTemplateId ? updated : s))
+      : [...stacks, updated]
+  }
+
   // 빈 칸 하나에 손에 든 씨앗을 심는다.
   //
   // 어느 씨앗이 들어가는지는 보내지 않는다. crop_template이 정하는 값이라 서버가
@@ -78,13 +96,59 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
       //
       // 응답에는 바뀐 것만 실려 온다 — 칸 하나(data.plot)와 줄어든 씨앗
       // 하나(data.seedStack). 나머지 24칸과 다른 재료들은 건드리지 않는다.
+      //
+      // 심을 씨앗은 반드시 갖고 있으므로 여기서 mergeStack은 갈아끼우는 갈래로만
+      // 간다. 그래도 쓰는 이유는 같은 일을 두 모양으로 적어 두지 않으려는 것이다.
       onPlayerChange((prev) => ({
         ...prev,
         plots: prev.plots.map((p) =>
           p.plotNumber === data.plot.plotNumber ? data.plot : p,
         ),
-        stacks: prev.stacks.map((s) =>
-          s.stackTemplateId === data.seedStack.stackTemplateId ? data.seedStack : s,
+        stacks: mergeStack(prev.stacks, data.seedStack),
+      }))
+    } catch (err) {
+      setMessage(`Request failed: ${err.message}`)
+    }
+  }
+
+  // 다 자란 칸 하나를 거둔다.
+  //
+  // 심기와 달리 body가 없다. 어느 칸인지는 URL에 있고 나머지는 전부 서버가 아는
+  // 값이라 보낼 것이 없다. 그래서 Content-Type 헤더도 필요 없다 — 헤더는 "지금
+  // 보내는 몸통이 어떤 형식인가"를 알리는 것인데, 몸통이 없으니 알릴 것도 없다.
+  async function handleHarvest(plotNumber) {
+    setMessage(null)
+
+    try {
+      const res = await fetch(`/api/plots/${plotNumber}/harvest`, {
+        method: 'POST',
+      })
+      const data = await res.json()
+
+      // 안 자란 칸을 눌렀을 때 여기로 온다 — not_ready. 화면에서 안 막기로 했으니
+      // 서버의 거절 경로가 실제로 도는 것을 눈으로 보게 된다.
+      if (!res.ok) {
+        setMessage(`Rejected: ${data.reason}`)
+        return
+      }
+
+      // 거두기는 셋을 한꺼번에 바꾼다 — 칸이 비고, 스택 둘이 늘고, 골드가 붙는다.
+      //
+      // 골드는 서버가 계산한 잔액을 그대로 받는다. 이쪽에서 더하면 harvest_gold가
+      // 두 곳에 생기고, 요청이 겹쳤을 때 화면의 숫자가 DB와 어긋난다.
+      //
+      // 스택은 안쪽 mergeStack이 만든 새 배열을 바깥이 다시 받는다. 수확물은
+      // 없던 줄이라 붙고 씨앗은 있던 줄이라 갈아끼워지는데, 어느 쪽인지 여기서
+      // 가릴 필요가 없다 — mergeStack이 각각 알아서 고른다.
+      onPlayerChange((prev) => ({
+        ...prev,
+        gold: data.gold,
+        plots: prev.plots.map((p) =>
+          p.plotNumber === data.plot.plotNumber ? data.plot : p,
+        ),
+        stacks: mergeStack(
+          mergeStack(prev.stacks, data.stacks[0]),
+          data.stacks[1],
         ),
       }))
     } catch (err) {
@@ -105,8 +169,8 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
             화면은 이 배열만 훑으면 격자가 다 채워진다. */}
         <div className="field">
           {player.plots.map((plot) => {
-            // 빈 칸만 누를 수 있어서 여기만 button이 된다. 심어진 칸은 div로
-            // 남는데, 거두기가 붙는 다음 단계에서 그쪽도 button이 될 자리다.
+            // 빈 칸은 심고, 찬 칸은 거둔다. 두 갈래가 다른 요청을 보내므로
+            // button도 따로 그린다.
             if (plot.cropTemplateId === null) {
               return (
                 <button
@@ -123,14 +187,25 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
 
             const icon = stackOf(cropOf(plot.cropTemplateId).cropStackTemplateId).icon
             const remaining = (new Date(plot.readyAt).getTime() - now) / 1000
+            const ready = remaining <= 0
 
+            // 안 자란 칸도 누를 수 있게 둔다. 씨앗 0개를 disabled로 막은 것과
+            // 반대 선택인데, 여기서는 서버의 not_ready 거절이 화면에서 확인되는
+            // 값어치가 더 크다고 봤다 (2026-09-07).
             return (
-              <div key={plot.plotNumber} className="plot">
+              <button
+                key={plot.plotNumber}
+                type="button"
+                // 다 큰 칸에만 초록을 얹는다. "Ready" 글자는 11px이라 25칸을
+                // 훑어야 보이는데, 색은 훑지 않아도 눈에 들어온다.
+                className={`plot${ready ? ' plot-ready' : ''}`}
+                onClick={() => handleHarvest(plot.plotNumber)}
+              >
                 <span className="plot-icon">{icon}</span>
                 <span className="plot-time">
-                  {remaining > 0 ? formatTime(remaining) : 'Ready'}
+                  {ready ? 'Ready' : formatTime(remaining)}
                 </span>
-              </div>
+              </button>
             )
           })}
         </div>

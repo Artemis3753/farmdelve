@@ -170,8 +170,14 @@
   opacity: 0.8;
 }
 
-/* 빈 칸만 button이라 브라우저 기본 버튼 모양을 덮어야 한다. 심어진 칸은 div라
-   이 규칙이 안 걸린다. */
+/* 다 큰 칸. 25칸을 눈으로 훑어야 어디가 다 컸는지 알던 것을, 색 하나로 바로
+   보이게 한다. 시간 글자는 이미 "Ready"로 바뀌지만 11px이라 멀리서 안 읽힌다. */
+.plot-ready {
+  border-color: var(--ready-border);
+  background: var(--ready-bg);
+}
+
+/* 심어진 칸도 button이 됐다. 빈 칸과 함께 브라우저 기본 버튼 모양을 덮는다. */
 button.plot {
   font: inherit;
   color: inherit;
