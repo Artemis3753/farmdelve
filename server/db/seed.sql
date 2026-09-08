@@ -52,7 +52,7 @@ VALUES
 --    base_crit은 DEFAULT 0이라 목록에서 뺐다.
 INSERT INTO gear_template (name, slot, rarity, base_attack_power, base_health, base_armor)
 VALUES
-  ('Solid Sickle',  'weapon', 'common', 10,  0, 0),
+  ('Solid Scythe',  'weapon', 'common', 10,  0, 0),
   ('Straw Hat',     'head',   'common',  0, 10, 2),
   ('Work Shirt',    'chest',  'common',  0, 10, 2),
   ('Work Trousers', 'legs',   'common',  0, 10, 2),
@@ -161,7 +161,7 @@ FROM (VALUES
 INSERT INTO gear_instance (gear_template_id, player_id, upgrade_level)
 SELECT gear_template_id, (SELECT player_id FROM player), 3
   FROM gear_template
- WHERE name IN ('Solid Sickle', 'Straw Hat');
+ WHERE name IN ('Solid Scythe', 'Straw Hat');
 
 
 -- 9. 작물 4종. 성장 시간은 백로그에서 확정된 값이고(2026-08-26), 나머지 둘은

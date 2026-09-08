@@ -87,6 +87,6 @@ and returns `{ upgraded: false }`.
 ## 🎯 Planned
 
 - ⚔️ Real-time combat
-- 🗡️ Three weapon specializations — Sickle, Crossbow, Watering Can
+- 🗡️ Three weapon specializations — Scythe, Crossbow, Watering Can
 - 🏰 Dungeon tiers
 - 🏆 Leaderboard

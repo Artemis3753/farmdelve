@@ -1,12 +1,12 @@
 Spec note
 
-Sickle(Melee)
+Scythe(Melee)
 Button budget: 6 rotation buttons + 1 mobility skill
 Range: 1 tile, diagonals included. Distances are tiles now - meters are gone
 
 0. auto-attack: Hits the primary target only, within range 1. Generates no Rage. Attack speed is a property of the weapon, hits per second, not a stat gear rolls. It costs no button and no GCD - it just runs
 1. builder(ST) - Furious Thrust: Brutally stabs the primary target. Generates 1c of Rage
-2. builder(AoE) - Brutal Swing: Cuts every enemy three wide and two rows ahead, based on facing. The only sickle skill that reaches past range 1, and the only one where facing matters. Generates 0.5c of Rage per target hit. Caps at 5 targets
+2. builder(AoE) - Brutal Swing: Cuts every enemy three wide and two rows ahead, based on facing. The only scythe skill that reaches past range 1, and the only one where facing matters. Generates 0.5c of Rage per target hit. Caps at 5 targets
 3. spender(ST) - Overhead Slam: Slams the primary target for heavy damage. Damage scales with combo points spent on a smooth curve - no sharp jump between steps, so holding for 5c should not always be the right call. Exact numbers TBD
 4. spender(AoE) - Whirling Slash: Channeled. Spins in place, cutting every enemy in range 1. 0.7s duration per combo point, movement allowed while channeling, ticking damage. Ticks are re-checked every tick against whoever is standing in range 1 right then, so walking away wastes ticks and walking back resumes them - no separate rule needed. Also applies a bleed, but only to the primary target: with no target selected the ticks still land and the bleed does not. Cannot be interrupted once started, and restores a flat amount of health on completion - amount TBD, has to stay well under the healing potion's 60%. The completion heal only lands if at least one tick connected
 5. main cd - Market Price Rage: Enraged by crop inflation. All attack power increased by 20%, 1m cd, 15s sustain

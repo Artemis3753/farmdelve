@@ -13,7 +13,7 @@ Last updated: 2026-09-04
 
 - Single-player. No multiplayer, no co-op.
 - Real-time action combat (player presses skills, builds a rotation).
-- Three weapon specializations: Sickle (melee), Crossbow (ranged),
+- Three weapon specializations: Scythe (melee), Crossbow (ranged),
   Watering Can (control / debuffs).
 - Stack: React, Node.js/Express, PostgreSQL.
 - Leaderboard ranked by highest dungeon tier cleared.
@@ -93,7 +93,7 @@ Last updated: 2026-09-04
   Harvest Crest** — only the adjective changes, so the tier order reads
   without a legend. The refined material is **Refined Ironroot**, which
   keeps its relationship to the raw crop in the name. The starting weapon
-  is the **Solid Sickle**.
+  is the **Solid Scythe**.
 
 - The count resets at each band, but the crest tier rises, so the real cost
   keeps climbing. Higher crests only drop in deeper dungeons, which is what
@@ -143,12 +143,12 @@ Last updated: 2026-09-04
 - **Meters are gone — every distance is written in tiles.** The 4m / 12m /
   8m figures recorded on 2026-08-24 were borrowed from free-movement games
   and never meant anything on a grid.
-- **The Sickle's range is 1**: every adjacent tile, diagonals included.
+- **The Scythe's range is 1**: every adjacent tile, diagonals included.
   Diagonals count as distance 1 because excluding them would leave a
   monster standing at arm's length untouchable, and the player shuffling
   sideways to line up. That is fussiness, not tactics.
 - Range 1 draws the same shape as a 3x3 centered on the player, so **the
-  elite's spin and the Sickle's reach overlap exactly**: the tile you have
+  elite's spin and the Scythe's reach overlap exactly**: the tile you have
   to stand on to hit is the tile that gets you hit.
 - Movement is four-directional while range is eight-directional. Reaching
   a diagonal tile costs two steps, but a monster already standing on one
@@ -159,7 +159,7 @@ Last updated: 2026-09-04
   character is **range N**; anything projected forward is **N rows ahead**.
   Both would otherwise be spelled "3x3" and mean different shapes.
 - Skill shapes in tiles: Brutal Swing covers **three wide by two rows
-  ahead**, based on facing — the only Sickle skill where facing matters,
+  ahead**, based on facing — the only Scythe skill where facing matters,
   and the only one that reaches past range 1. Its six tiles are what make
   the five-target cap mean anything; cutting it to one row ahead would
   leave three tiles and kill the cap. The tier-1 talent widens it to three
@@ -385,7 +385,7 @@ what was written on 2026-08-25.
 - A `TIME_SCALE` env var speeds up growth for demos and development.
   Per-crop growth durations live in the database, not in env.
 
-### Sickle resource (2026-08-25)
+### Scythe resource (2026-08-25)
 
 - **Combo-point model** — basic skills build points, a finisher spends them.
   No separate resource pool on top of it.
@@ -414,7 +414,7 @@ what was written on 2026-08-25.
 - Button budget restated: **6 rotation buttons plus a mobility skill.**
 - Full skill list lives in `spec-note.txt`.
 - Crossbow and Watering Can resources are intentionally **not decided** —
-  the DoD only covers the Sickle, and WoW itself gives each spec a
+  the DoD only covers the Scythe, and WoW itself gives each spec a
   different resource.
 
 ### Combat rules (2026-08-24)
@@ -444,7 +444,7 @@ what was written on 2026-08-25.
   slot**. Critical strike is what makes two items of the same slot worth
   comparing.
 - **Haste is out of scope.** Melee runs a fixed GCD and the DoD covers the
-  Sickle only, so haste would be a dead stat on the one spec being built.
+  Scythe only, so haste would be a dead stat on the one spec being built.
   It stays in the design for the Watering Can, which exists on paper.
 - **Percent stats share one formula:** `value / (value + K)`.
   - Armor: `armor / (armor + 1000)`. Being a division it cannot reach
@@ -458,7 +458,7 @@ what was written on 2026-08-25.
     table to maintain. What it gives up is the "linear until the
     threshold" feel; revisit here if scaling ever reads as flat.
 - **Bleeds ignore armor**, as in WoW. Deeper tiers mean more monster armor,
-  so this is what keeps the Sickle's bleed relevant at depth.
+  so this is what keeps the Scythe's bleed relevant at depth.
 
 ### Character progression (2026-08-26)
 
@@ -475,7 +475,7 @@ what was written on 2026-08-25.
   stay open for farming. Entry costs nothing.
 - **Talents reset for free, any time outside a dungeon.** Changing them
   mid-fight is blocked so cooldowns and running effects cannot desync.
-- **Starting gear: one lowest-rarity sickle at +0.** The four armor slots
+- **Starting gear: one lowest-rarity scythe at +0.** The four armor slots
   start empty and fill from drops.
 - Talent points are **not stored**: the total derives from
   `highest_tier_cleared`, the spend from `player_talent` rows. That is the
@@ -521,7 +521,7 @@ applied**. That last field is not the same as direct-vs-tick, because
 bleeds bypass armor. Storing combat logs server-side remains out of scope —
 this lives in client memory, and only the shape had to be settled early.
 
-### Sickle talent tree (2026-08-26)
+### Scythe talent tree (2026-08-26)
 
 - **Five tiers, one pick per tier, two points each** — exactly the ten
   points available.
@@ -562,7 +562,7 @@ Blocking the dungeon, not the code:
   Two things to work backwards from:
   - **Time.** Tier 1 allows five minutes. Five pulls at roughly 40 seconds
     plus a boss fills most of it, so "what dies in 40 seconds to a starting
-    sickle" sets trash health.
+    scythe" sets trash health.
   - **Damage.** Per-monster melee has to stay low, because what the player
     actually absorbs is `melee × monsters attached` and pulls run 3–5 deep.
     Difficulty should come from pack size and composition, not from any one
@@ -594,9 +594,12 @@ Non-blocking:
   it lands only if at least one tick connected, so walking away from
   everything and finishing the channel heals nothing. Without that, backing
   out of the elite's spin would have been rewarded rather than paid for.
-- ~~Whether attack speed varies by sickle~~ — **settled 2026-08-27: fixed
-  for the weapon type.** The sickle is medium; an axe would be slow. Speed
-  belongs to the weapon type, not the item, so it is a code constant and
+- ~~Whether attack speed varies by scythe~~ — **settled 2026-08-27: fixed
+  for the weapon type.** The scythe is medium because its kit is channelled
+  AoE — a slow swing would make that rotation sluggish; an axe would be
+  slow. Speed follows the role the weapon is built around, not how heavy it
+  looks. Speed belongs to the weapon type, not the item, so it is a code
+  constant and
   `gear_template` gets no column. Both references point the same way — WoW
   had to invent normalization precisely because per-weapon speed distorted
   ability damage, and its fix was to treat speed as a property of the
@@ -610,7 +613,7 @@ Non-blocking:
   or move one of them?
 - Names for the thirteen talents.
 - Critical strike's K value; base GCD.
-- Starting sickle's base stats. **A placeholder went into the database on
+- Starting scythe's base stats. **A placeholder went into the database on
   2026-08-28** — 10 attack power, everything else zero. Real
   numbers wait on monster health, since "what dies in 40 seconds" is what
   sets them.
@@ -637,9 +640,9 @@ Non-blocking:
 
 ### Combat
 
-- [x] Sickle skill list — see `spec-note.txt`
+- [x] Scythe skill list — see `spec-note.txt`
 - [x] Skill resource system — Rage, combo-point model
-- [x] Sickle talent tree — thirteen talents, five tiers
+- [x] Scythe talent tree — thirteen talents, five tiers
 - [x] Skill shapes and ranges in tiles — meters dropped
 - [x] Auto-attack rules — primary target only, generates no Rage
 - [x] **Trash mechanics** — spin, pools, volley
@@ -679,6 +682,14 @@ Table list is settled — see `data-model.md`. What is left:
 - [ ] REST API endpoint list — the upgrade endpoint first, since it carries
       the server-authoritative roll
 - [ ] Accounts and login (see §4 — deferred)
+- [ ] **Walking into buildings on the main screen** — added 2026-09-08.
+      Zones are entered by clicking them; walking a character into a door
+      reads better. Parked deliberately: the dungeon needs tile movement
+      anyway (see Grid movement above), and building it there first means
+      building it once. Ours stays four-directional and tile-based, so it is
+      Stardew's shape but not its pixel-smooth motion — that was settled for
+      the dungeon's sake and the main screen inherits it. Outside the DoD on
+      its own.
 
 ---
 
@@ -748,7 +759,7 @@ Anything after it is a separate update, not "still finishing up."
 
 - [ ] Farm home screen: plots, crops, currency
 - [ ] Skill resource system
-- [ ] **Sickle specialization only** — skills and talent tree. Crossbow and
+- [ ] **Scythe specialization only** — skills and talent tree. Crossbow and
       Watering Can are designed on paper but not built. One working spec is
       enough to prove the skill; building three triples the schedule.
 - [ ] Dungeon tiers 1 through 10

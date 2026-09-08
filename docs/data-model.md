@@ -29,7 +29,7 @@ Four column rules, settled 2026-08-27 while naming the first slice:
    `base_attack_power` has it and `upgrade_level` does not.
 3. **When a combination can only appear once, the combination is the key.**
    A player holds exactly one row per stackable, so `player_stack` needs no
-   id of its own. A player can own two identical sickles at different
+   id of its own. A player can own two identical scythes at different
    upgrade levels, so `gear_instance` does.
 4. **Role prefixes only where a table is referenced twice.** `upgrade`
    points at `stack_template` for both the crest and the refined material,
@@ -57,8 +57,8 @@ Four column rules, settled 2026-08-27 while naming the first slice:
 | `gear_set_bonus` | Per set, what bonus applies at how many equipped pieces. |
 
 Gear is split into template and instance because the two answer different
-questions. "A sickle has 50 base attack" is true of every sickle forever;
-"this sickle is +7 and belongs to player 1" is true of exactly one object.
+questions. "A scythe has 50 base attack" is true of every scythe forever;
+"this scythe is +7 and belongs to player 1" is true of exactly one object.
 Merging them would duplicate the base stats once per owned copy and would
 turn a balance change into an update across every row in the game.
 
@@ -137,7 +137,7 @@ Notes worth keeping:
   identity: it changes when gear is swapped, and it is NULL for the four
   armour slots at the start. Both disqualify it from the key. A `UNIQUE`
   constraint on it is still worth adding — PostgreSQL permits repeated
-  NULLs, so the empty slots are fine, while the same sickle equipped in two
+  NULLs, so the empty slots are fine, while the same scythe equipped in two
   places at once is not.
 - `slot` is a plain value, not a foreign key. Five fixed strings do not
   earn a lookup table.
