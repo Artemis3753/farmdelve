@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import Icon from '../components/Icon.jsx'
 
 // 온실. 심고 거두는 일이 전부 여기서 일어난다 — 메인 화면에 보이는 밭은
 // 들어오는 문이고, 실제 작업대는 이 화면이다(백로그 2026-08-26에 갈라짐).
@@ -276,7 +277,7 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
               )
             }
 
-            const icon = stackOf(cropOf(plot.cropTemplateId).cropStackTemplateId).icon
+            const cropName = stackOf(cropOf(plot.cropTemplateId).cropStackTemplateId).name
             const remaining = (new Date(plot.readyAt).getTime() - now) / 1000
             const ready = remaining <= 0
 
@@ -292,7 +293,7 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
                 className={`plot${ready ? ' plot-ready' : ''}`}
                 onClick={() => handleHarvest(plot.plotNumber)}
               >
-                <span className="plot-icon">{icon}</span>
+                <Icon of={cropName} className="plot-icon" />
                 <span className="plot-time">
                   {ready ? 'Ready' : formatTime(remaining)}
                 </span>
@@ -339,7 +340,7 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
                   disabled={held === 0}
                   onClick={() => setSelectedCropId(crop.cropTemplateId)}
                 >
-                  <span className="zone-icon">{seed.icon}</span>
+                  <Icon of={seed.name} className="zone-icon" />
                   <span className="slot-name">{seed.name}</span>
                   {held}
                 </button>

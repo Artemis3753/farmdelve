@@ -63,8 +63,8 @@
 }
 
 .zone-icon {
-  font-size: 32px;
-  line-height: 1;
+  width: 32px;
+  height: 32px;
 }
 
 .zone-label {
@@ -131,6 +131,11 @@
   border-color: var(--accent-border);
   cursor: context-menu;
   font-size: 20px;
+}
+
+.bag-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .hint {
@@ -251,8 +256,8 @@
 }
 
 .plot-icon {
-  font-size: 20px;
-  line-height: 1;
+  width: 20px;
+  height: 20px;
 }
 
 /* 고정폭 글꼴을 쓰는 이유는 멋이 아니다. 남은 시간이 1초마다 바뀌는데 일반
@@ -356,4 +361,10 @@ button.plot:enabled:hover {
   border: 1px solid var(--border);
   border-radius: 6px;
   font-family: var(--mono);
+}
+
+.stack-icon {
+  width: 24px;
+  height: 24px;
+  vertical-align: middle;
 }

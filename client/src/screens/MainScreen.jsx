@@ -1,3 +1,5 @@
+import Icon from '../components/Icon.jsx'
+
 // 메인 화면. 손그림의 18×10 격자에 5×5 구역 넷을 얹은 것이다.
 //
 // 좌상단 밭 / 좌하단 대장간 / 우상단 던전 / 우중단 은신처. 밭 구역이 곧
@@ -8,10 +10,10 @@
 // 좌표를 따로 적어두는 것보다, 어느 칸을 차지하는지가 여기서 바로 읽힌다.
 
 const ZONES = [
-  { id: 'greenhouse', icon: '🌾', label: 'Greenhouse', col: '2 / 7', row: '1 / 6' },
-  { id: 'dungeon', icon: '🕳️', label: 'Dungeon', col: '13 / 18', row: '1 / 6' },
-  { id: 'smithy', icon: '🔨', label: 'Smithy', col: '2 / 7', row: '6 / 11' },
-  { id: 'shelter', icon: '🏠', label: 'Shelter', col: '13 / 18', row: '6 / 11' },
+  { id: 'greenhouse', label: 'Greenhouse', col: '2 / 7', row: '1 / 6' },
+  { id: 'dungeon', label: 'Dungeon', col: '13 / 18', row: '1 / 6' },
+  { id: 'smithy', label: 'Smithy', col: '2 / 7', row: '6 / 11' },
+  { id: 'shelter', label: 'Shelter', col: '13 / 18', row: '6 / 11' },
 ]
 
 function MainScreen({ onEnter }) {
@@ -32,7 +34,7 @@ function MainScreen({ onEnter }) {
             // 사실과 어느 문인지만 위로 올려보내고, 전환은 App이 한다.
             onClick={() => onEnter(zone.id)}
           >
-            <span className="zone-icon">{zone.icon}</span>
+            <Icon of={zone.id} className="zone-icon" />
             <span className="zone-label">{zone.label}</span>
           </button>
         ))}

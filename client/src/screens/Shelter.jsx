@@ -1,18 +1,7 @@
 import { useState } from 'react'
+import Icon from '../components/Icon.jsx'
 
 const SLOTS = ['head', 'chest', 'legs', 'feet', 'weapon']
-
-// 이미지가 생기기 전까지 쓰는 자리 표시. 슬롯 단위라서 같은 칸에 들어가는 장비는
-// 전부 같은 그림이 되는데, 드랍으로 종류가 늘면 그때는 gear_template에 icon
-// 컬럼이 필요해진다 — stack_template이 이미 그렇게 하고 있다.
-const SLOT_ICONS = {
-  head: '👒',
-  chest: '👕',
-  legs: '👖',
-  feet: '🥾',
-  // 낫 이모지는 없다. 🌾는 Harvest Crest가 이미 쓰고 있어서 재료와 헷갈린다.
-  weapon: '⚔️',
-}
 
 // 은신처. 손그림에서는 창고·인벤토리·장비창을 한 화면에 합쳐뒀다 —
 // 좌우에 장비 슬롯과 스탯, 가운데 캐릭터, 아래에 가방.
@@ -121,7 +110,7 @@ function Shelter({ templates, player, onPlayerChange, onLeave }) {
                 }}
                 title={label(gear)}
               >
-                {SLOT_ICONS[templateOf(gear).slot]}
+                <Icon of={templateOf(gear).slot} className="bag-icon" />
               </button>
             )
           })}
@@ -139,7 +128,8 @@ function Shelter({ templates, player, onPlayerChange, onLeave }) {
             )
             return (
               <li key={s.stackTemplateId}>
-                {s.icon} {s.name} — {held?.amount ?? 0}
+                <Icon of={s.name} className="stack-icon" />
+                {s.name} — {held?.amount ?? 0}
               </li>
             )
           })}

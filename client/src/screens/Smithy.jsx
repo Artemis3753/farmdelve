@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Icon from '../components/Icon.jsx'
 
 const SLOTS = ['weapon', 'head', 'chest', 'legs', 'feet']
 
@@ -116,7 +117,8 @@ function Smithy({ templates, player, onPlayerChange, onLeave }) {
                 const held = heldOf(m.id)
                 return (
                   <li key={m.id}>
-                    {stack.icon} {stack.name} — {m.need} needed / {held} held
+                    <Icon of={stack.name} className="stack-icon" />
+                    {stack.name} — {m.need} needed / {held} held
                     {held < m.need && ' (short)'}
                   </li>
                 )
