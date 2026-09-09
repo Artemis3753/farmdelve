@@ -200,11 +200,19 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
       const cropStack = stackOf(data.stacks[0].stackTemplateId)
       const seedStack = stackOf(data.stacks[1].stackTemplateId)
 
+      // 완성된 문장이 아니라 조각으로 담는다. <Icon>은 글자가 아니라 "무엇을
+      // 그릴지 적은 객체"라서 문자열 안에 못 들어간다 — 넣으면 [object Object]가
+      // 찍힌다. 조립은 아래 렌더가 한다.
       setMessage({
-        text:
-          `${cropStack.icon} ${cropStack.name} ×${data.gained.crop} · ` +
-          `+${data.gained.gold} gold · ` +
-          `${seedStack.icon} ×${data.gained.seeds}`,
+        crop: { name: cropStack.name, amount: data.gained.crop },
+        gold: data.gained.gold,
+
+        // 씨앗 상자에 개수를 안 넣는다. 아래 seeds가 이미 같은 값을 들고 있어서
+        // 두 곳에 두면 한쪽만 고쳐지는 날이 오는데, 그 seeds를 여기로 옮길 수도
+        // 없다 — 잭팟 판정이 세 곳에서 그 값을 본다. 상자 안은 "메시지에 그릴
+        // 것"이고 seeds는 "이 수확이 대박인가"라서, 같은 숫자지만 다른 일을 한다.
+        seed: { name: seedStack.name },
+
         seeds: data.gained.seeds,
 
         // 별이 터질 자리. 메시지 줄에서 터뜨렸더니 <p>가 가로 폭을 다 차지해서
@@ -315,7 +323,19 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
               message.seeds >= 4 ? ' jackpot-big' : ''
             }`}
           >
-            {message.text}
+            {/* 수확 성공에만 조각이 들어 있다. 거절과 요청 실패는 text 하나뿐이다.
+                {' '}가 붙은 자리는 JSX가 줄바꿈에 걸린 공백을 지우기 때문이다 —
+                눈에는 떨어져 보여도 그대로 두면 아이콘과 글자가 붙어서 나온다. */}
+            {message.crop ? (
+              <>
+                <Icon of={message.crop.name} className="stack-icon" />{' '}
+                {message.crop.name} ×{message.crop.amount}
+                {' · '}+{message.gold} gold{' · '}
+                <Icon of={message.seed.name} className="stack-icon" /> ×{message.seeds}
+              </>
+            ) : (
+              message.text
+            )}
           </p>
         )}
       </section>
@@ -326,6 +346,17 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
         <ul className="slot-row">
           {templates.crops.map((crop) => {
             const seed = stackOf(crop.seedStackTemplateId)
+
+            // 카드에 적는 이름은 씨앗이 아니라 작물이다. "Chili Pepper Seed"가
+            // 72px 칸에서 세 줄로 접히면서 그 카드만 숫자가 아래로 밀렸는데,
+            // 긴 이름의 절반인 "Seed"는 이미 세 곳이 말하고 있다 — 섹션 제목,
+            // 바로 위 힌트 문장, 그리고 봉지 모양 아이콘.
+            //
+            // 문자열에서 잘라내지 않는다. 그러면 이름에 "Seed"가 들어있다는
+            // 가정에 기대게 되고, 규칙이 바뀌는 날 조용히 깨진다. 아래 값은
+            // 밭 칸이 작물 이름을 꺼낼 때 쓰는 것과 같은 필드다.
+            const cropStack = stackOf(crop.cropStackTemplateId)
+
             const held = heldOf(crop.seedStackTemplateId)
             const selected = crop.cropTemplateId === selectedCropId
 
@@ -340,8 +371,10 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
                   disabled={held === 0}
                   onClick={() => setSelectedCropId(crop.cropTemplateId)}
                 >
+                  {/* 아이콘은 씨앗 쪽 그대로다. 봉지 배경이 "이건 심는 것"을
+                      말하는 자리라, 글자에서 뺀 정보를 여기가 대신 든다. */}
                   <Icon of={seed.name} className="zone-icon" />
-                  <span className="slot-name">{seed.name}</span>
+                  <span className="slot-name">{cropStack.name}</span>
                   {held}
                 </button>
               </li>

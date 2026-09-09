@@ -57,10 +57,14 @@ CREATE TABLE gear_template (
 -- 쌓이는 물건의 정의 — crest, 강화 재료, 물약, 씨앗이 구분 없이 함께 있다.
 -- 종류를 구분할 kind 컬럼은 아직 넣지 않는다. 그걸 넣으려면 종류 목록을 지금
 -- 확정해야 하는데, 소비 아이템 키 바인딩이 생기기 전까지는 구분할 이유가 없다.
+-- 아이콘은 여기 없다. 이모지를 쓰던 동안은 icon TEXT 컬럼이 있었고 그 값을
+-- 나중에 이미지 경로로 갈아끼울 생각이었는데, 실제로 이미지를 넣어 보니 한 칸에
+-- 담기는 값이 아니었다 — 그림 하나에 배경 모양·배경색·그림색이 딸려 오고, 그
+-- 셋은 게임 규칙이 아니라 화면 사정이다. 그래서 client/src/components/Icon.jsx의
+-- 표가 정본이 됐고 이 컬럼은 아무도 안 읽는 채로 남아 있다가 지워졌다.
 CREATE TABLE stack_template (
   stack_template_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name TEXT NOT NULL,
-  icon TEXT NOT NULL,
 
   -- 한 칸에 몇 개까지 쌓이는지. 가방 칸 수 계산에만 쓰이고 소지 상한은 아니다.
   max_stack INTEGER NOT NULL CHECK (max_stack > 0)

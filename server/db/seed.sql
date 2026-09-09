@@ -14,31 +14,25 @@ INSERT INTO player DEFAULT VALUES;
 
 -- 2. 쌓이는 물건 12종. stack_template_id는 GENERATED ALWAYS라 목록에서 뺀다.
 --
---    crest 셋은 원래 성장 단계(🌱🌿🌾)로 그렸는데 메달로 바꿨다. 🌾가 밀을
---    나타내는 사실상 유일한 이모지라, 대체재가 없는 쪽에 양보한 것이다.
---    crest는 등급만 전달하면 되고 메달이 오히려 등급으로 더 잘 읽힌다.
---
---    씨앗은 봉지 + 작물 두 글자다. icon이 TEXT라 이모지를 이어 붙일 수 있고,
---    그러면 "씨앗이다"라는 분류와 "무슨 씨앗이다"가 한 칸에서 동시에 읽힌다.
---
---    이모지는 전부 자리 표시다. 이미지로 바꾸는 것은 별도 작업이고, icon이
---    TEXT라 그때도 스키마는 그대로 두고 값만 경로로 갈아끼우면 된다.
-INSERT INTO stack_template (name, icon, max_stack)
+--    여기 있던 icon 열은 지웠다. 이름이 곧 아이콘 키라서 Icon.jsx의 표가 이
+--    name으로 그림을 찾는다 — 그래서 이 목록의 이름을 고치면 화면에서 아이콘이
+--    사라진다. 값이 두 곳에 있는 게 아니라 한쪽이 다른 쪽의 키다.
+INSERT INTO stack_template (name, max_stack)
 VALUES
-  ('Seed Crest',        '🥉',   99),
-  ('Sprout Crest',      '🥈',   99),
-  ('Harvest Crest',     '🥇',   99),
-  ('Refined Ironroot',  '⚙️',   99),
-  ('Ironroot',          '🪵',   99),
+  ('Seed Crest',        99),
+  ('Sprout Crest',      99),
+  ('Harvest Crest',     99),
+  ('Refined Ironroot',  99),
+  ('Ironroot',          99),
 
-  ('Wheat Seed',        '🫘🌾', 99),
-  ('Potato Seed',       '🫘🥔', 99),
-  ('Chili Pepper Seed', '🫘🌶️', 99),
-  ('Ironroot Seed',     '🫘🪵', 99),
+  ('Wheat Seed',        99),
+  ('Potato Seed',       99),
+  ('Chili Pepper Seed', 99),
+  ('Ironroot Seed',     99),
 
-  ('Wheat',             '🌾',   99),
-  ('Potato',            '🥔',   99),
-  ('Chili Pepper',      '🌶️',   99);
+  ('Wheat',             99),
+  ('Potato',            99),
+  ('Chili Pepper',      99);
 
 
 -- 3. 시작 장비 5종의 정의. 스탯은 전부 임시값이다 — 몬스터 체력이 정해져야

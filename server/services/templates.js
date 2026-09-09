@@ -21,7 +21,7 @@ export async function getTemplates() {
     // 별칭에 큰따옴표가 없으면 PostgreSQL이 식별자를 소문자로 눕혀서
     // maxStack이 아니라 maxstack으로 나온다.
     pool.query(
-      `SELECT stack_template_id AS "stackTemplateId", name, icon,
+      `SELECT stack_template_id AS "stackTemplateId", name,
               max_stack AS "maxStack"
          FROM stack_template
         ORDER BY stack_template_id`,
