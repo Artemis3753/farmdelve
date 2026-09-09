@@ -62,7 +62,7 @@ PostgreSQL          10 tables
 | Method | Path | |
 |---|---|---|
 | `GET` | `/api/health` | database reachable? |
-| `GET` | `/api/templates` | static data — item names, icons, crops, recipes, upgrade costs. Fetched once |
+| `GET` | `/api/templates` | static data — item names, crops, recipes, upgrade costs. Fetched once |
 | `GET` | `/api/player` | everything that changes — gold, stacks, gear, plots |
 | `POST` | `/api/gear/:gearInstanceId/upgrade` | rolls for `+1`. The roll is server-side |
 | `PUT` | `/api/gear/:gearInstanceId/equip` | idempotent, so `PUT` rather than `POST` |

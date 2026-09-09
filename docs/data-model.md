@@ -42,7 +42,7 @@ Four column rules, settled 2026-08-27 while naming the first slice:
 
 | Table | Holds |
 |---|---|
-| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — gear is the only growth axis, and talent points derive from `highest_tier_cleared`. **Gold is a column here, not a row in `player_stack`** (2026-08-27): it has no icon and no max stack, it does not take a bag slot the way potions do, and upgrading, repairing, and shops all read and write it inside transactions where a join would only add a lock to take. A second currency would be the day to reconsider — the same call made for `recipe`. |
+| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — gear is the only growth axis, and talent points derive from `highest_tier_cleared`. **Gold is a column here, not a row in `player_stack`** (2026-08-27): it has no max stack, it does not take a bag slot the way potions do, and upgrading, repairing, and shops all read and write it inside transactions where a join would only add a lock to take. A second currency would be the day to reconsider — the same call made for `recipe`. |
 | `player_talent` | Which talents this player has taken. |
 
 ## Items
@@ -52,7 +52,7 @@ Four column rules, settled 2026-08-27 while naming the first slice:
 | `gear_template` | The definition of a piece of gear: name, slot (chest / head / legs / feet / weapon), base stats, rarity, which set it belongs to. Base stats are drawn from four: attack power (weapon), health and armor (armor slots), and critical strike (any slot). |
 | `gear_instance` | One actual piece of gear in the world: which template it follows, who owns it, its upgrade level. **No durability column** — durability is deferred. |
 | `player_gear_slot` | What this player currently has equipped. Five rows per player, one per slot, each pointing at a `gear_instance`. The slot count is enforced by the table shape rather than by application code, so equipping two helmets is structurally impossible. |
-| `stack_template` | The definition of anything counted rather than owned individually: crops, seeds, potions, crests, upgrade materials. Name, icon, max stack size. |
+| `stack_template` | The definition of anything counted rather than owned individually: crops, seeds, potions, crests, upgrade materials. Name, max stack size. Icons live in the client, not here — an icon carries a shape and two colors, which is a screen concern. |
 | `player_stack` | How many of each stackable this player holds. Who, what, how many. |
 | `gear_set_bonus` | Per set, what bonus applies at how many equipped pieces. |
 
@@ -109,8 +109,7 @@ player                            gear_template
 stack_template                      base_attack_power
   stack_template_id      PK         base_health
   name                              base_armor
-  icon                              base_crit
-  max_stack
+  max_stack                         base_crit
 
 gear_instance                     player_stack
   gear_instance_id       PK         player_id           FK ─┐
