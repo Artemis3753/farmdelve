@@ -90,3 +90,13 @@ and returns `{ upgraded: false }`.
 - 🗡️ Three weapon specializations — Scythe, Crossbow, Watering Can
 - 🏰 Dungeon tiers
 - 🏆 Leaderboard
+
+## 🎨 Credits
+
+Item, gear and zone icons come from [game-icons.net](https://game-icons.net),
+made by **Lorc**, **Delapouite**, **Lucas** and **Irongamer**, and licensed
+under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+
+They are recolored here, and seeds and crests are drawn onto backgrounds
+that are not part of the originals — see
+[`Icon.jsx`](client/src/components/Icon.jsx).
