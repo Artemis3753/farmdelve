@@ -168,16 +168,59 @@ Last updated: 2026-09-04
   anchor: ranged wants something near 4-6 for "shoots from afar" to read
   at all against a melee range of 1.
 
+### Dungeon space (2026-09-10)
+
+- **The dungeon is one corridor, nine tiles tall, that scrolls
+  horizontally.** The route runs left to right and the camera follows the
+  player, who stays centred — so sixteen tiles are on screen, eight ahead
+  and eight behind.
+- **The screen's long side had to be the direction of travel.** A vertical
+  corridor makes the short side the way forward: nine tiles of warning no
+  matter how wide the corridor gets. Turning it sideways doubles that for
+  free. This is not a side-scroller — the view stays top-down, only the
+  scrolling changed.
+- **The two axes do different jobs.** Left and right is approach; up and
+  down is dodging. Movement is four-directional, so the split stays
+  readable.
+- **Volley range is 8 tiles — exactly the screen edge.** Any longer and
+  the player is shot from off-screen; any shorter and walking over is
+  cheap. WoW settles the same problem the same way: 40-yard abilities
+  against a camera that stops at 39.
+- The corridor is nine tall and the volley reaches eight, so **no amount
+  of sidestepping escapes it.** "Cannot be dodged" describes the geometry,
+  not just the rule.
+- **The ranged type holds its ground while it can still reach the player,
+  and closes when it cannot.** Fellowship does the same — its ranged
+  enemies "stay put unless they cannot attack you". A monster nailed down
+  for good would hand the player a free answer: walk past 8 tiles and the
+  melee follows while the volley switches off, so the bill never arrives.
+- **The volley fires unconditionally** — every eight seconds, moving or
+  standing, adjacent or far. The alternative, silence while moving, would
+  have turned retreating into a way to stall it and made monster movement
+  speed a balance number.
+- **Pack spacing is 10 tiles and aggro radius is 5.** Spacing has to
+  exceed aggro or packs collect themselves and chain pulling stops being a
+  decision; aggro has to stay under 8 or everything visible is already on
+  its way.
+
 ### Dungeon loop and rewards (2026-08-25)
 
-- One run is: enter -> clear five pulls -> kill the boss -> rewards.
-- **Five pulls of 3–5 monsters each**, along a single vertical route.
-  Progress reads as a count — `3/5 pulls` — not a percentage. A percentage
-  would only be worth its complexity if there were more pulls than the run
-  requires, and on one straight route there is nothing to route around.
-- Pulls of 3–5 sit right on Brutal Swing's five-target cap, so one pull is
-  exactly what the AoE builder is built to eat.
-- **The boss appears the instant the fifth pull dies, on that spot.**
+- One run is: enter -> clear eight packs -> kill the boss -> rewards.
+- **Two words, deliberately kept apart** (2026-09-10). A **pack** is what
+  the dungeon places; a **pull** is what the player drags into one fight.
+  Eight packs are fixed, but how many pulls a run takes is the player's
+  call. Chain pulling is what split them — before it, one pack was one
+  pull and the two words meant the same thing.
+- **Eight packs of 2–4 monsters each**, along a single horizontal corridor
+  that runs left to right. Progress reads as a kill count — `12/20
+  monsters`, say — not a percentage. A percentage would only be worth its
+  complexity if there were more monsters than the run requires, and on one
+  straight corridor there is nothing to route around. A pack counter was
+  the earlier plan, but chain pulling would make it jump two at a time.
+- **A pack of 2–4 cannot fill Brutal Swing's five-target cap on its own.**
+  Merging two packs is what reaches five, and nothing is gained past it —
+  so the cap is the reward for chain pulling and the brake on it at once.
+- **The boss appears the instant the last pack dies, on that spot.**
   There is no boss room to walk to, and killing the boss is what completes
   the run.
 - Popping immediately means the boss can begin while the player is at low
@@ -199,10 +242,10 @@ Last updated: 2026-09-04
 - The elites' health is what separates them from the swarm, and it does
   more than that: **the swarm dies to AoE and the elite is left standing
   alone, so every pull turns into a single-target finish.** Both halves of
-  the talent tree get used in all five pulls, not only against the boss.
+  the talent tree get used in every pull, not only against the boss.
 - **The second elite costs one mechanic and one row of stats, and buys
   variety exactly where the run needs it.** With one elite type, that
-  single-target finish is the same fight five times over; with two, the
+  single-target finish is the same fight every time; with two, the
   closing stretch of a pull changes depending on which one is left
   standing.
 - The ranged type layers a positioning question on top: walk over and cut
@@ -237,6 +280,48 @@ Last updated: 2026-09-04
   as "the gear paid off." WoW layers affixes on top of raw scaling to keep
   the pressure on; **we have no affixes, so the tension at depth has to
   come from monster mechanics instead.**
+
+### Pack layout and chain pulling (2026-09-10)
+
+- **Packs are laid out against the player's cooldowns rather than against
+  a difficulty curve.** Market Price Rage runs 60 seconds and a pack takes
+  roughly 40, so it cannot be up for every pack: closing that gap needs 20
+  seconds of walking between packs, and four such walks leave 20 seconds
+  for the boss. The arithmetic settles it — once every two packs.
+- **Which packs get merged is the player's call.** Aggro is 5 tiles
+  against a spacing of 10, so dragging one pack into the next is
+  deliberate work. Merging is what fills Brutal Swing's five-target cap,
+  and it stretches a fight long enough to spend a 60-second cooldown
+  inside it, so the reward is throughput and cooldown uptime at once.
+- The brake was already written: damage taken is `melee × monsters
+  attached` and nothing is gained past five targets, so a third pack
+  doubles the danger and adds no damage.
+- **Eight packs, 22 monsters.**
+
+  | # | Pack | Count | Paired with the next |
+  |---|---|:--:|---|
+  | 1 | 2 swarm | 2 | **5** — exact cap, no timers |
+  | 2 | 3 swarm | 3 | 6 |
+  | 3 | 2 swarm + elite A | 3 | **5** — spin and pools |
+  | 4 | 1 swarm + elite B | 2 | **5** — pools and volley |
+  | 5 | 2 swarm + ranged | 3 | **5** — one volley |
+  | 6 | 2 swarm | 2 | 6 |
+  | 7 | 2 swarm + elite A + ranged | 4 | 7 — **three timers** |
+  | 8 | 2 swarm + elite B | 3 | — |
+
+- **Sizes vary so that the sums mean something.** Two packs of two fall
+  short of the cap; two of four waste three targets. Four of the seven
+  adjacent pairs come to exactly five, and finding them is the skill.
+- **Pairs can be taken off-beat.** Merging (2,3), (4,5) and (6,7) instead
+  of the obvious pairs never puts both elites in one fight — at the cost
+  of one extra pull and one extra walk. Note that (4,5) is one of the
+  pairs that adds to five, so off-beat is not only for playing safe.
+- **(7,8) is the pair §2 warned about** — two elites and a volley at once.
+  It stays in the layout because it is now a choice rather than a forced
+  pull: the most expensive option on the route, not an unfair one.
+- The boss spawns where pack 8 dies and pack 8 carries elite B, **so a
+  pool laid in its last seconds is still on the ground when the boss
+  appears.** Two existing rules meeting, not a designed moment.
 
 ### Trash mechanics (2026-08-27)
 
@@ -359,8 +444,8 @@ what was written on 2026-08-25.
   visible before committing. **That preview can be computed client-side** —
   the roll and the write stay on the server, so a faked preview only lies
   to the screen.
-- Dungeon screen: vertical progress, a four-direction view that follows the
-  character, monsters grouped into pulls, and a header with dungeon name,
+- Dungeon screen: horizontal progress, a four-direction view that follows
+  the character, monsters grouped into packs, and a header with dungeon name,
   time remaining, and tier. Along the bottom: the Rage bar, the skill bar,
   and consumables.
 - **Abandoning a run: no record, no reward, straight back to the main
@@ -548,33 +633,47 @@ Blocking the dungeon, not the code:
   playable — see Trash mechanics above. The hard constraint carries over:
   Whirling Slash cannot be interrupted, so anything dodge-or-die has to
   leave a window wider than a 3.5-second channel.
-- **Dungeon grid size**, which the ranged type's range depends on. A range
-  longer than the visible board means being shot from off-screen; a short
-  one makes walking over cheap. Since that walk is the whole trade the
-  ranged type offers, its range is structure, not a balance number — and it
-  cannot be picked before the board is.
-- **Pull composition.** Three to five monsters, but not which. Two elite
-  types in one pull means two timers plus a volley running at once; if
-  anything is going to feel unfair, it starts here rather than in any one
-  mechanic's numbers.
+- ~~**Dungeon grid size**~~ — **settled 2026-09-10.** A corridor nine
+  tiles tall that scrolls horizontally, sixteen tiles on screen, and a
+  volley range of 8 that lands on the screen edge. See Dungeon space
+  above.
+- ~~**Pack composition**~~ — **settled 2026-09-10.** Eight packs, 22
+  monsters, laid out so that four adjacent pairs add to exactly five. See
+  Pack layout and chain pulling above. **The counts stay provisional until
+  tier-1 numbers exist** — whether 22 fits inside five minutes depends on
+  what dies how fast.
 - **Tier-1 monster numbers** — health, armor, damage, plus the intervals
   and damage for the three mechanics now written (spin, pools, volley).
   Two things to work backwards from:
-  - **Time.** Tier 1 allows five minutes. Five pulls at roughly 40 seconds
-    plus a boss fills most of it, so "what dies in 40 seconds to a starting
-    scythe" sets trash health.
+  - **Time.** Tier 1 allows five minutes, and eight packs plus a boss have
+    to fit inside it. The target: **taken one pack at a time the run
+    should be tight or a little over, and merging is what buys the
+    margin.** Otherwise chain pulling is a convenience rather than the
+    skill the layout is built around. That is what sets trash health.
   - **Damage.** Per-monster melee has to stay low, because what the player
-    actually absorbs is `melee × monsters attached` and pulls run 3–5 deep.
+    actually absorbs is `melee × monsters attached`, and a merged pair runs
+    five to seven deep.
     Difficulty should come from pack size and composition, not from any one
     monster hitting hard — the same shape WoW Mythic+ uses, where a single
     trash mob is trivial and the pull is what kills. It also ties damage to
     survival: clearing a pack faster means taking less, so AoE throughput
     doubles as a defensive stat.
+    **The numbers are set against a single pack, not a merged pair** — up
+    to four attached rather than seven. Balancing for seven would leave
+    one-at-a-time pulling so safe that merging costs nothing, and the
+    choice collapses. Setting them at four is what puts the two pressures
+    in opposition: **the clock pushes toward merging and the damage
+    formula pushes away from it**, and every adjacent pair asks which one
+    wins.
   *Blocks: any real balancing.*
   Two constraints are already fixed by the mechanics: the pools may not
   kill on their own — a rough test is surviving a full pull standing in
   them without dropping past half health — and a pull's worth of volleys
   has to sit inside what the healing sources cover.
+  **Both survive chain pulling.** The layout never puts two ranged types
+  or two elite Bs in adjacent packs, so no merge doubles either source —
+  reaching two would take a three-pack pull, which the five-target cap
+  already discourages.
 
 Non-blocking:
 
