@@ -1,12 +1,14 @@
--- FarmDelve — 지금까지 지은 10개 테이블. 강화·장착 슬라이스가 일곱을 세웠고,
--- 농장 슬라이스가 셋을 더했다(2026-09-03).
--- 남은 일곱(던전 다섯, 특성, 세트 보너스)은 각자의 슬라이스에서 짓는다.
+-- FarmDelve — 지금까지 지은 12개 테이블. 강화·장착 슬라이스가 일곱을 세웠고,
+-- 농장 슬라이스가 셋을 더했다, 추가로 던전 슬라이스가 둘을 더했다(2026-09-11).
+-- 남은 다섯(던전 3개, 특성, 세트 보너스)은 각자의 슬라이스에서 짓는다.
 -- 자세한 근거는 docs/data-model.md.
 --
 -- npm run db:reset 으로 실행한다. 개발 중에는 스키마가 자주 바뀌므로 매번 통째로
 -- 다시 만드는 편이 빠르다. 실 데이터가 생기기 전까지만 유효한 방식이다.
 
 -- 다시 만들기 전에 지운다. 참조하는 쪽을 먼저 지워야 외래 키가 걸리지 않는다.
+DROP TABLE IF EXISTS dungeon_run;
+DROP TABLE IF EXISTS dungeon_template;
 DROP TABLE IF EXISTS player_gear_slot;
 DROP TABLE IF EXISTS gear_instance;
 DROP TABLE IF EXISTS player_stack;
@@ -221,4 +223,51 @@ CREATE TABLE recipe (
 
   crafted_stack_template_id INTEGER NOT NULL REFERENCES stack_template,
   crafted_amount INTEGER NOT NULL CHECK (crafted_amount > 0)
+);
+
+
+-- 던전의 정의. DoD는 던전 하나뿐이라 행도 하나지만, 코드 상수가 아니라 표로 둔다.
+-- dungeon_run이 처음부터 이쪽을 가리키고 있어서, 두 번째 던전이 생겨도 고칠 곳이
+-- 행 하나 추가하는 것 말고는 없다.
+--
+-- 지금 담는 것은 이름뿐이다. 8팩 배치와 몬스터 구성은 monster_template이 있어야
+-- 걸 수 있어서 그 표가 생길 때 함께 정한다.
+CREATE TABLE dungeon_template (
+  dungeon_template_id  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name TEXT NOT NULL
+);
+
+
+-- 던전 런 한 번. 클리어만이 아니라 실패한 런과 진행 중인 런까지 전부 여기 들어온다.
+-- 리더보드를 따로 두지 않은 이유가 이것이다 — 리더보드는 저장 장소가 아니라
+-- 이 표를 status로 거른 조회 결과다. 같은 사실을 두 곳에 적으면 둘이 어긋난다.
+--
+-- 서버는 런의 시작과 끝만 안다. 진행 중에는 아무것도 받지 않으므로 실시간 전투
+-- 상태는 이 표에 없다. 대신 입장 자격 검사와 시간 측정이 서버 쪽에 남는다.
+--
+-- 소요 시간 컬럼은 두지 않는다. end_time - start_time으로 나오는 값이라 따로
+-- 저장하면 손으로 맞춰야 하는 자리가 하나 늘어난다. 제한 시간을 넘겼는지도 같은
+-- 이유로 저장하지 않고 dungeon_tier_template의 제한 시간과 비교해서 판정한다.
+CREATE TABLE dungeon_run (
+  dungeon_run_id  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+  player_id  INTEGER NOT NULL REFERENCES player,
+  dungeon_template_id  INTEGER NOT NULL REFERENCES dungeon_template,
+
+  -- 몇 티어짜리 런인가
+  tier  INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 10),
+
+  -- 서버가 입장 시각을 찍는다
+  start_time  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- 진행 중이면 NULL
+  end_time  TIMESTAMPTZ,
+
+  -- 진행중 / 클리어 / 실패
+  status  TEXT NOT NULL CHECK (status IN ('ongoing', 'cleared', 'failed')),
+
+  -- end_time과 status는 "런이 끝났는가"라는 같은 사실을 두 번 말한다. 한쪽만
+  -- 바뀌면 DB가 모순된 상태를 갖게 되므로, 둘이 항상 같은 답을 내도록 묶는다.
+  -- ongoing이 아닌 모든 상태(cleared·failed)는 자동으로 end_time을 요구받는다.
+  CHECK ((end_time IS NULL) = (status = 'ongoing'))
 );
