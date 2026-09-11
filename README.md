@@ -9,7 +9,8 @@ and equipping**, and **farming**. You can plant a crop, wait for it to grow,
 harvest it for produce and gold, refine the produce into an upgrade material,
 and spend that material on a `+1` roll that can fail.
 
-Combat and dungeons are designed on paper but have no code yet.
+Dungeons have a home in the database now, but no API and no screen yet.
+Combat is still on paper.
 
 ## 🏃 Running it locally
 

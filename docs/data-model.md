@@ -4,7 +4,7 @@ Table list for the DoD scope. Each entry says what the table holds. Columns
 are written for the seven tables in the first vertical slice (upgrading);
 the other ten get theirs when their slice arrives.
 
-Last updated: 2026-08-27
+Last updated: 2026-09-11
 
 ## Naming convention
 
@@ -85,7 +85,7 @@ points earned.
 | `dungeon_template` | The definition of a dungeon. Only one dungeon is in the DoD, but naming it `template` leaves room to add more without renaming anything. |
 | `dungeon_tier_template` | Per tier 1-10: the time limit and the monster scaling multiplier. Ten rows. The multiplier compounds 8% per tier, putting tier 10 at 2.0x tier 1. |
 | `monster_template` | Monster definitions: health, attack, mechanics. |
-| `dungeon_leaderboard` | The record of a completed run — who cleared which tier in what time. |
+| `dungeon_run` | One dungeon run. Ongoing, cleared and failed runs all live here — the leaderboard is this table filtered by status, not a table of its own. Duration is computed from the start and end times rather than stored. |
 | `dungeon_drop` | Which gear can drop at which tier, and at what rate. |
 
 ## Upgrading
