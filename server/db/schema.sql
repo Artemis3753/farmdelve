@@ -1,6 +1,7 @@
--- FarmDelve — 지금까지 지은 12개 테이블. 강화·장착 슬라이스가 일곱을 세웠고,
--- 농장 슬라이스가 셋(2026-09-03), 던전 슬라이스가 둘(2026-09-11)을 더했다.
--- 남은 다섯(던전 테이블 3개, 특성, 세트 보너스)은 각자의 슬라이스에서 짓는다.
+-- FarmDelve — 지금까지 지은 13개 테이블. 강화·장착 슬라이스가 일곱을 세웠고,
+-- 농장 슬라이스가 셋(2026-09-03), 던전 슬라이스가 셋(2026-09-11에 둘,
+-- 2026-09-14에 하나)을 더했다.
+-- 남은 넷(던전 테이블 2개, 특성, 세트 보너스)은 각자의 슬라이스에서 짓는다.
 -- 자세한 근거는 docs/data-model.md.
 --
 -- npm run db:reset 으로 실행한다. 개발 중에는 스키마가 자주 바뀌므로 매번 통째로
@@ -8,6 +9,7 @@
 
 -- 다시 만들기 전에 지운다. 참조하는 쪽을 먼저 지워야 외래 키가 걸리지 않는다.
 DROP TABLE IF EXISTS dungeon_run;
+DROP TABLE IF EXISTS dungeon_tier_template;
 DROP TABLE IF EXISTS dungeon_template;
 DROP TABLE IF EXISTS player_gear_slot;
 DROP TABLE IF EXISTS gear_instance;
@@ -238,6 +240,28 @@ CREATE TABLE dungeon_template (
 );
 
 
+-- 티어별로 고정된 값. 지금 담는 것은 제한 시간 하나뿐이다.
+--
+-- 8% 복리 배율(1.08^(tier-1))은 여기 컬럼으로 두지 않는다(2026-09-14). 배율은
+-- 규칙 하나로 열 값이 다 나오는데, 표에 적으면 반올림된 값 열 개를 손으로
+-- 맞춰야 하는 자리가 생긴다. 제한 시간은 반대다 — 5/10/15분은 계단이라 그런
+-- 식이 없고, 계단의 위치 자체가 밸런싱 결정이라 데이터로 둘 값이다.
+CREATE TABLE dungeon_tier_template (
+
+  -- 티어 번호 자체가 키다. 대리키를 따로 두면 dungeon_run이 티어를 두 번
+  -- 들고 있게 되고(그 표의 id와 tier), 둘이 어긋난 상태를 DB가 못 막는다.
+  -- upgrade 표가 upgrade_level로 이미 쓰는 모양이라 새로 만드는 규칙도 아니다.
+  tier  INTEGER  PRIMARY KEY CHECK (tier BETWEEN 1 AND 10),
+
+  -- 시각이 아니라 기간이라 INTERVAL이다. crop_template.growth_time과 같은
+  -- 이유이고, 덕분에 end_time - start_time 과 바로 비교할 수 있다.
+  -- 밴드는 백로그 §1 Dungeon loop and rewards가 정했다 — 1~4는 5분, 5~8은
+  -- 10분, 9~10은 15분.
+  time_limit INTERVAL NOT NULL CHECK (time_limit > INTERVAL '0 seconds')
+
+);
+
+
 -- 던전 런 한 번. 클리어만이 아니라 실패한 런과 진행 중인 런까지 전부 여기 들어온다.
 -- 리더보드를 따로 두지 않은 이유가 이것이다 — 리더보드는 저장 장소가 아니라
 -- 이 표를 status로 거른 조회 결과다. 같은 사실을 두 곳에 적으면 둘이 어긋난다.
@@ -254,8 +278,13 @@ CREATE TABLE dungeon_run (
   player_id  INTEGER NOT NULL REFERENCES player,
   dungeon_template_id  INTEGER NOT NULL REFERENCES dungeon_template,
 
-  -- 몇 티어짜리 런인가
-  tier  INTEGER NOT NULL CHECK (tier BETWEEN 1 AND 10),
+  -- 몇 티어짜리 런인가. dungeon_tier_template이 생기기 전에는 CHECK 하나뿐이었고,
+  -- 그 표가 생기면서 FK를 걸 수 있게 됐다(2026-09-14).
+  --
+  -- 둘 다 남겼지만 FK만으로 충분한지는 아직 안 갈랐다. 티어 표에 열 행이 다
+  -- 들어 있으면 CHECK가 더 막는 값이 없어 보이는데, 확인하지 않았다.
+  -- 입장 API에서 티어 자격을 검사할 때 이 줄을 다시 볼 자리다.
+  tier  INTEGER NOT NULL REFERENCES dungeon_tier_template(tier) CHECK (tier BETWEEN 1 AND 10),
 
   -- 서버가 입장 시각을 찍는다
   start_time  TIMESTAMPTZ NOT NULL DEFAULT now(),

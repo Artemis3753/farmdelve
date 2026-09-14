@@ -234,3 +234,33 @@ INSERT INTO player_stack (player_id, stack_template_id, amount)
 SELECT (SELECT player_id FROM player), stack_template_id, 10
   FROM stack_template
  WHERE name IN ('Wheat Seed', 'Potato Seed', 'Chili Pepper Seed', 'Ironroot Seed');
+
+
+-- 13. 던전 하나. DoD가 던전 한 곳이라 행도 하나지만, 코드 상수가 아니라 표로
+--     둔 이유는 schema.sql의 dungeon_template 주석에 적어뒀다.
+--
+--     이름은 화면 헤더에 그대로 뜬다(백로그 §1 Gear and UI layout). 아이콘 키로
+--     쓰이는 stack_template.name과 달리 코드와 엮이는 곳이 없어서, 나중에
+--     바꾸더라도 깨지는 자리가 없다.
+INSERT INTO dungeon_template (name)
+VALUES ('The Fallow Deep');
+
+
+-- 14. 티어 10단의 제한 시간. 백로그 §1 Dungeon loop and rewards가 밴드로
+--     정해놨다 — 1~4는 5분, 5~8은 10분, 9~10은 15분.
+--
+--     오늘 아침에 "배율은 표에 안 넣는다"고 정했는데 제한 시간은 표에 넣는 것이
+--     어긋나 보일 수 있다. 둘의 성격이 다르다 — 배율은 1.08^(tier-1)이라 규칙
+--     하나로 열 값이 다 나오지만, 밴드는 계단이라 그런 식이 없다. 계단의 위치
+--     자체가 밸런싱 결정이다.
+--
+--     열 줄을 그대로 적는 모양은 upgrade 블록(6번)과 같다. 저쪽도 100/70/40
+--     세 구간이라 여기와 같은 계단이다.
+--
+--     한 줄에 한 밴드씩 묶어 적는다. 티어 순서대로 열 줄을 세우는 것보다
+--     계단이 어디서 꺾이는지가 눈에 먼저 들어온다.
+INSERT INTO dungeon_tier_template (tier, time_limit)
+VALUES
+  ( 1, INTERVAL '5 minutes'), ( 2, INTERVAL '5 minutes'), ( 3, INTERVAL '5 minutes'), ( 4, INTERVAL '5 minutes'),
+  ( 5, INTERVAL '10 minutes'), ( 6, INTERVAL '10 minutes'), ( 7, INTERVAL '10 minutes'), ( 8, INTERVAL '10 minutes'),
+  ( 9, INTERVAL '15 minutes'), (10, INTERVAL '15 minutes');
