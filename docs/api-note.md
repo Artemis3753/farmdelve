@@ -32,6 +32,12 @@ Read from `server/index.js` and `server/services/*.js` on 2026-09-14.
   row**. Letting `'abc'` reach pg raises `22P02`, which would be reported as
   a 500 — a bad request, not a broken server.
 - **409 is a rejection the code decided on; 500 is a failure nobody planned.**
+- **Every field in a response is camelCase, never the snake_case the column
+  is named.** The read services alias in SQL (`highest_tier_cleared AS
+  "highestTierCleared"` — the double quotes are what keep the capitals);
+  the write services destructure in JS instead. So a `jq` filter written
+  from the column name comes back `null`, and `jq` will not tell you the
+  key was missing rather than empty.
 
 ---
 
@@ -71,7 +77,7 @@ body  none
 500   internal_error
 ```
 
-`player` spreads `gold` and `highest_tier_cleared` at the top level.
+`player` spreads `gold` and `highestTierCleared` at the top level.
 `equipped` is an object keyed by slot, not an array.
 
 > The 404 cannot happen while `PLAYER_ID` is hardcoded, but returning

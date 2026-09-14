@@ -6,6 +6,7 @@ import { getPlayer } from './services/player.js';
 import { equipGear } from './services/equip.js';
 import { plantSeed, harvestCrop } from './services/farm.js';
 import { craftItem } from './services/craft.js';
+import { enterDungeon, completeDungeon } from './services/dungeon.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -187,6 +188,67 @@ app.post('/api/craft/:recipeId', async (req, res) => {
 
     if (status === 500) {
       console.error('craft failed:', err);
+      res.status(500).json({ reason: 'internal_error' });
+    } else {
+      res.status(status).json({ reason: err.reason, details: err.details });
+    }
+  }
+});
+
+// 던전 입장. 강화·심기와 같은 POST다 — 두 번 부르면 런이 두 개 시작돼야 하므로
+// 멱등하지 않다.
+//
+// 다른 라우트와 달리 URL에 대상이 없다. 아직 런이 존재하지 않는 시점이라
+// 가리킬 것이 없어서, 클라이언트가 말할 수 있는 tier 하나가 body로 온다.
+app.post('/api/dungeon/enter', async (req, res) => {
+  // 심기의 cropTemplateId와 같은 가드다. 숫자가 아니면 요청 자체가 규격을
+  // 어긴 것이라 404가 아니라 400이다.
+  const tier = Number(req.body?.tier);
+
+  if (!Number.isInteger(tier)) {
+    return res.status(400).json({ reason: 'invalid_body' });
+  }
+
+  try {
+    res.status(200).json(await enterDungeon(PLAYER_ID, tier));
+  } catch (err) {
+    const status = err.status ?? 500;
+
+    if (status === 500) {
+      console.error('dungeon enter failed:', err);
+      res.status(500).json({ reason: 'internal_error' });
+    } else {
+      res.status(status).json({ reason: err.reason, details: err.details });
+    }
+  }
+});
+
+// 런 종료. cleared를 클라이언트가 보내는 것이 이 API의 성격을 그대로 드러낸다 —
+// 서버는 전투를 보지 않으므로 확인할 방법이 없다. 백로그가 부정행위 방지를
+// 범위 밖으로 정해둔 결정(2026-08-24)이 여기 한 줄로 남는다.
+app.post('/api/dungeon/:runId/complete', async (req, res) => {
+  const runId = Number(req.params.runId);
+
+  if (!Number.isInteger(runId)) {
+    return res.status(404).json({ reason: 'run_not_found' });
+  }
+
+  // 다른 라우트들은 Number.isInteger로 걸렀지만 이 값은 숫자가 아니다.
+  // 참/거짓 둘만 받는다고 못 박지 않으면 문자열 'false'가 그대로 참으로 읽혀서,
+  // 실패한 런이 클리어로 기록된다.
+  const cleared = req.body?.cleared;
+
+  if (cleared !== true && cleared !== false) {
+    return res.status(400).json({ reason: 'invalid_body' });
+  }
+
+  try {
+    res.status(200).json(await completeDungeon(PLAYER_ID, runId, cleared));
+  } catch (err) {
+    const status = err.status ?? 500;
+
+    if (status === 500) {
+      console.error('dungeon complete failed:', err);
       res.status(500).json({ reason: 'internal_error' });
     } else {
       res.status(status).json({ reason: err.reason, details: err.details });
