@@ -205,6 +205,11 @@ Last updated: 2026-09-04
 
 ### Dungeon loop and rewards (2026-08-25)
 
+- **The dungeon is called The Fallow Deep** (named 2026-09-14). Fallow ground
+  is land deliberately left unplanted, which leaves the question of why this
+  ground was left — the same trick the scythe's cooldown plays with Market
+  Price Rage, farming vocabulary standing in a fantasy frame. The name lives
+  in `dungeon_template`, shows in the run header, and is tied to no code.
 - One run is: enter -> clear eight packs -> kill the boss -> rewards.
 - **Two words, deliberately kept apart** (2026-09-10). A **pack** is what
   the dungeon places; a **pull** is what the player drags into one fight.
@@ -716,8 +721,15 @@ Non-blocking:
   2026-08-28** — 10 attack power, everything else zero. Real
   numbers wait on monster health, since "what dies in 40 seconds" is what
   sets them.
-- Save timing during a dungeon run. Writing every frame is impossible; what
-  happens if the browser closes mid-run?
+- ~~Save timing during a dungeon run~~ — **settled 2026-09-14.** The server
+  writes twice, at entry and at completion, and takes nothing in between, so
+  there is no frame to save. A run whose browser closed stays `ongoing` until
+  the next entry closes it as `failed`, timed at `LEAST(now(), start_time +
+  time_limit)` so neither a three-day run nor a future `end_time` can be
+  recorded. **Resuming was considered and dropped**: keeping pack progress is
+  cheap, but closing the cheese it opens — quit at a bad pull, return at full
+  health — would require health, cooldowns and positions, which is the mid-run
+  saving already rejected. See `api-note.md`.
 - Drop details — per-tier rates, duplicate handling, how many items one
   clear can yield.
 - Greenhouse screen contents. The grid size itself is settled — 25 plots.
@@ -757,8 +769,10 @@ Table list is settled — see `data-model.md`. What is left:
 
 - [x] **Column names for the upgrade slice** — seven tables, 2026-08-27
 - [x] **Where gold lives** — a column on `player`
-- [ ] Column names for the other ten tables, slice by slice
-- [ ] Save timing strategy
+- [ ] Column names for the remaining four tables, slice by slice. Thirteen of
+      seventeen are built: seven from upgrading, three from the farm, three
+      from the dungeon
+- [x] **Save timing strategy** — settled 2026-09-14, see §2 above
 - [ ] **Drop details** — per-tier drop rates, duplicate handling, how many
       items one clear can yield. Recommendation on the table: roll once and
       pick a single winner by weight, rather than rolling each item

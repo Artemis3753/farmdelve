@@ -17,7 +17,8 @@ Read from `server/index.js` and `server/services/*.js` on 2026-09-14.
 | `POST` | `/api/plots/:plotNumber/plant` | |
 | `POST` | `/api/plots/:plotNumber/harvest` | |
 | `POST` | `/api/craft/:recipeId` | |
-| — | **dungeon: enter / complete** | designed, not built |
+| `POST` | `/api/dungeon/enter` | body `{ tier }`; closes a leftover run first |
+| `POST` | `/api/dungeon/:runId/complete` | body `{ cleared }`; the client asserts it |
 
 ## Shared rules
 
@@ -186,54 +187,84 @@ body  none
 
 ## Dungeon
 
-**Designed 2026-09-14, not built yet.** The table below is deliberately blank.
+The server knows a run's **start and end, nothing in between**. There is no
+progress endpoint, so nothing here can tell you how far into a run a player is.
+
+### `POST /api/dungeon/enter`
 
 ```
-___1  ___2
-body  ___3
-200   ___4
-___5  ___6
-note  ___7
+body  { tier }
+200   { runId, tier, startTime, timeLimitSeconds }
+400   invalid_body
+404   player_not_found
+409   tier_too_high            details { highestTierCleared }
+500   internal_error
 ```
 
+> Unlike every other write endpoint, nothing rides in the URL — at this point
+> the run does not exist yet, so there is nothing to point at.
+>
+> **A leftover `ongoing` run is closed as `failed` in the same transaction**,
+> with `end_time = LEAST(now(), start_time + time_limit)`. Each candidate lies
+> in a different case: `now()` alone turns a run reopened three days later into
+> a three-day run, and `start_time + time_limit` alone puts `end_time` in the
+> future when the player comes back inside the limit. So a player is never
+> blocked by their own abandoned run, and at most one `ongoing` row exists.
+>
+> **Resuming is deliberately not built.** Storing pack progress is cheap, but
+> blocking the cheese that follows — close the browser at a bad pull, reopen at
+> full health — needs health, cooldowns and positions too, which is the
+> mid-run saving rejected on 2026-09-11.
+>
+> `timeLimitSeconds` is seconds, matching `growthSeconds` in `/api/templates`.
+> A raw `INTERVAL` reaches the client as `{ minutes: 5 }` and makes it unpack
+> an object. `TIME_SCALE` is **not** applied — the dungeon is fought in real
+> time, so a five-minute limit compressed to thirty seconds is not a demo of
+> anything.
+
+### `POST /api/dungeon/:runId/complete`
+
 ```
-___8  ___9
-body  ___10
-200   ___11
-___12 ___13
-note  ___14
+body  { cleared }          boolean, and only true or false
+200   { status, overtime, highestTierCleared }
+400   invalid_body
+404   run_not_found
+409   run_already_ended       details { status }
+500   internal_error
 ```
 
-### Blanks to fill
+> **The client asserts the clear; the server never sees the fight.** Cheating
+> the leaderboard is a known limitation, accepted on 2026-08-24 — this is a
+> portfolio game, not a live one, and the note belongs in the README rather
+> than in a validation layer that cannot work.
+>
+> `cleared` is rejected unless it is exactly `true` or `false`. The string
+> `"false"` is truthy in JavaScript, so without that check a failed run would
+> be recorded as a clear and could raise the player's best tier.
+>
+> **`overtime` is computed in SQL, never stored** — `now() > start_time +
+> time_limit`, compared against the run's own tier. Storing it would mean
+> keeping two answers to one question in sync by hand.
+>
+> **Overtime still counts as `cleared` but does not raise
+> `highestTierCleared`.** The two live on separate lines for that reason. If an
+> overtime clear moved the bar, a player could climb to tier 10 without ever
+> beating the timer, and the limit would only shave rewards instead of gating
+> progress — the same split WoW makes by handing back a lower keystone.
+>
+> `highestTierCleared` comes back `null` when nothing moved, and the new value
+> otherwise. `GREATEST` in SQL keeps a lower tier from lowering the record,
+> and keeps read-compare-write from becoming three steps with a gap in them.
 
-| Blank | What it decides |
-|:--:|---|
-| `___1` `___8` | method for each — both change state |
-| `___2` `___9` | path. The four verb-shaped paths above set the pattern |
-| `___3` `___10` | what the client is allowed to name |
-| `___4` `___11` | what comes back. The rule the others follow: **ship what changed**, so the client need not refetch |
-| `___5` `___12` | the rejection codes. Candidates discussed: tier out of reach, a run that already ended, a run id that does not exist, a malformed body |
-| `___6` `___13` | the reason strings for those |
-| `___7` `___14` | the why. Two are worth writing down — the server never sees the fight, and overtime is derived rather than stored |
-
-### What is already settled
-
-From `design-backlog.md` §1 and the 2026-09-14 session:
-
-- The server knows a run's **start and end, nothing in between**.
-- Entry is gated on `highest_tier_cleared + 2`.
-- A leftover `ongoing` run is closed as `failed` when the next run starts,
-  with `end_time = LEAST(now(), start_time + time_limit)`.
-- **Resuming a run is not built** — blocking the cheese would rebuild the
-  mid-run saving that was rejected on 2026-09-11.
-- Overtime clears still count as `cleared`, but **do not raise**
-  `highest_tier_cleared`.
-- Rewards wait on tier numbers, so the endpoints land without them.
+**Rewards are not here yet.** Gold and crests per tier are unsettled
+(`design-backlog.md` §2, *Drop details*), so completing a run changes status
+and the best tier and nothing else.
 
 ---
 
 ## Not built
 
 - The remaining dungeon tables — `monster_template`, `dungeon_drop`, and
-  whatever the boss needs.
+  whatever the boss needs. Tier-1 monster numbers block all of them.
+- Rewards on the completion response.
 - Accounts and login (`design-backlog.md` §4).
