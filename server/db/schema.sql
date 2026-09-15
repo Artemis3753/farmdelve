@@ -1,6 +1,6 @@
--- FarmDelve — 지금까지 지은 14개 테이블. 강화·장착 슬라이스가 일곱을 세웠고,
--- 농장 슬라이스가 셋(2026-09-03), 던전 슬라이스가 넷(2026-09-11에 둘,
--- 2026-09-14와 2026-09-15에 하나씩)을 더했다.
+-- FarmDelve — 지금까지 지은 15개 테이블. 강화·장착 슬라이스가 일곱을 세웠고,
+-- 농장 슬라이스가 셋(2026-09-03), 던전 슬라이스가 다섯(2026-09-11에 둘,
+-- 2026-09-14에 하나, 2026-09-15에 둘)을 더했다.
 -- 남은 셋(던전 테이블 1개, 특성, 세트 보너스)은 각자의 슬라이스에서 짓는다.
 -- 자세한 근거는 docs/data-model.md.
 --
@@ -9,6 +9,7 @@
 
 -- 다시 만들기 전에 지운다. 참조하는 쪽을 먼저 지워야 외래 키가 걸리지 않는다.
 DROP TABLE IF EXISTS dungeon_run;
+DROP TABLE IF EXISTS monster_pack;
 DROP TABLE IF EXISTS dungeon_tier_template;
 DROP TABLE IF EXISTS monster_template;
 DROP TABLE IF EXISTS dungeon_template;
@@ -233,8 +234,8 @@ CREATE TABLE recipe (
 -- dungeon_run이 처음부터 이쪽을 가리키고 있어서, 두 번째 던전이 생겨도 고칠 곳이
 -- 행 하나 추가하는 것 말고는 없다.
 --
--- 지금 담는 것은 이름뿐이다. 8팩 배치와 몬스터 구성은 monster_template이 있어야
--- 걸 수 있어서 그 표가 생길 때 함께 정한다.
+-- 지금 담는 것은 이름뿐이다. 팩 구성은 이 표의 컬럼이 아니라 monster_pack이 이쪽을
+-- 가리키는 행으로 둔다(2026-09-15) — 팩이 여덟이라 한 행에 담기지 않는다.
 CREATE TABLE dungeon_template (
   dungeon_template_id  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name TEXT NOT NULL
@@ -301,6 +302,44 @@ CREATE TABLE monster_template (
   -- 규칙 하나로 두는 편을 골랐다. 읽을 때는 EXTRACT(EPOCH FROM ...)::float8로 바꾼다.
   auto_attack_interval INTERVAL NOT NULL
     CHECK (auto_attack_interval > INTERVAL '0 seconds')
+);
+
+
+-- 던전의 팩 구성 — 몇 번 팩에 어떤 몬스터가 몇 마리인가(2026-09-15).
+-- monster_template이 "무엇인가"라면 이 표는 "어디에 몇 번 나오는가"다. WoW가
+-- creature_template(정의)과 creature(스폰)를 나눈 것과 같은 구분이다. 스웜 하나가
+-- 여러 팩에 나오므로 monster_template에 팩 컬럼을 둘 수 없다.
+--
+-- 한 행은 한 팩 안의 몬스터 한 종류와 그 마리 수다. player_stack의 "한 종류당 한 행
+-- + 개수"와 같은 모양이다. 마리마다 행을 두면 같은 팩의 두 스웜이 똑같은 행이 되어
+-- 구분할 순번이 따로 필요해진다.
+--
+-- 팩의 위치는 없다. 간격이 10칸 고정이라 팩 번호로 계산되고, 보스는 마지막 팩이
+-- 죽은 자리에 나온다 — 둘 다 규칙이라 저장하지 않는다.
+--
+-- 행은 아직 넣지 않는다. 가리킬 monster_template 행이 없어서 FK에 걸린다. 넣을
+-- 구성표는 백로그 Pack layout and chain pulling에 있다(8팩 22마리, 14행).
+CREATE TABLE monster_pack (
+
+  -- 어느 던전의 팩인가. 두 번째 던전이 생기면 행만 늘어난다
+  dungeon_template_id INTEGER NOT NULL REFERENCES dungeon_template,
+
+  -- 몇 번째 팩인가. 백로그의 8팩 고정을 상한으로 막았다. 다만 백로그는 22마리가
+  -- 5분에 들어가는지를 티어1 수치가 나올 때까지 잠정으로 두었으므로, 팩 수가
+  -- 바뀌면 이 줄도 같이 고친다
+  pack_number INTEGER NOT NULL CHECK (pack_number BETWEEN 1 AND 8),
+
+  -- 어떤 몬스터인가
+  monster_template_id INTEGER NOT NULL REFERENCES monster_template,
+
+  -- 몇 마리인가. 0마리 행은 "이 팩에 이 몬스터가 없다"는 뜻인데, 그건 행이 없는
+  -- 것으로 이미 표현된다 — player_stack.amount와 같은 판단이다
+  amount INTEGER NOT NULL CHECK (amount > 0),
+
+  -- 같은 팩에 같은 몬스터 행이 두 번 들어오면 마리 수가 두 곳에 나뉜다. 마리 수는
+  -- 행의 내용이지 행을 가리키는 이름표가 아니라서 PK에 넣지 않는다 — 넣으면
+  -- 마리 수만 다른 중복 행이 통과한다
+  PRIMARY KEY (dungeon_template_id, pack_number, monster_template_id)
 );
 
 
