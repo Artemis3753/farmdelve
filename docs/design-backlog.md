@@ -280,6 +280,11 @@ Last updated: 2026-09-04
   up; 8% was picked because it lands tier 10 at exactly double, matching
   what a +10 upgrade does to a player's stats. The two ceilings line up on
   purpose.
+- **Armor does not scale with tier** (2026-09-15). Armor feeds a damage
+  reduction, so multiplying it would compound with the health multiplier:
+  a tier-1 monster with 100 health and 200 armor has 120 effective health,
+  240 at tier 10 with armor fixed, and 280 with armor scaled — about 2.33×
+  instead of the 2× that was the reason for picking 8%.
 - Players also grow from drops, not just upgrading, so a geared player will
   outpace the curve somewhat in the late tiers. That is intended — it reads
   as "the gear paid off." WoW layers affixes on top of raw scaling to keep
@@ -395,9 +400,11 @@ feel bad for two seconds; a fixed eight-second interval is information they
 can plan around. It is also the one trash mechanic that does not touch
 positioning, which is worth having when the other two both do.
 
-Standing next to it stops its ordinary attacks but **not** the volley.
-Closing the distance pays off on arrival, before the kill lands — and the
-clock keeps running, so arriving is not the same as being safe.
+Distance changes nothing about what it does: **it keeps up its ordinary
+attacks like any other monster, and the volley fires every eight seconds
+however close the player stands.** Closing the distance pays off only when
+the kill lands, and the clock keeps running on the walk over, so the trip
+is a cost paid up front.
 
 What was deliberately *not* chosen: a stacking, ever-growing threat. That
 turns "should I go?" into "I have to go eventually", which is the choice
@@ -547,8 +554,10 @@ what was written on 2026-08-25.
     because one formula covers every percent stat and there is no band
     table to maintain. What it gives up is the "linear until the
     threshold" feel; revisit here if scaling ever reads as flat.
-- **Bleeds ignore armor**, as in WoW. Deeper tiers mean more monster armor,
-  so this is what keeps the Scythe's bleed relevant at depth.
+- **Bleeds ignore armor**, as in WoW. Monster armor does not scale with
+  tier (see Dungeon loop and rewards), so the bleed's edge over direct
+  damage is the same at every depth — it grows with the target's armor,
+  not with the tier.
 
 ### Character progression (2026-08-26)
 
@@ -769,8 +778,8 @@ Table list is settled — see `data-model.md`. What is left:
 
 - [x] **Column names for the upgrade slice** — seven tables, 2026-08-27
 - [x] **Where gold lives** — a column on `player`
-- [ ] Column names for the remaining four tables, slice by slice. Thirteen of
-      seventeen are built: seven from upgrading, three from the farm, three
+- [ ] Column names for the remaining three tables, slice by slice. Fourteen
+      of seventeen are built: seven from upgrading, three from the farm, four
       from the dungeon
 - [x] **Save timing strategy** — settled 2026-09-14, see §2 above
 - [ ] **Drop details** — per-tier drop rates, duplicate handling, how many

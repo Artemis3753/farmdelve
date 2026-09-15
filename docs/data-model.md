@@ -85,7 +85,7 @@ points earned.
 |---|---|
 | `dungeon_template` | The definition of a dungeon. Only one dungeon is in the DoD, but naming it `template` leaves room to add more without renaming anything. |
 | `dungeon_tier_template` | Per tier 1-10: the time limit, and nothing else. Ten rows, `tier` itself the primary key. The 8% scaling multiplier is **not** a column — one rule produces all ten values, so storing them would mean keeping ten rounded numbers correct by hand. The time limit is the opposite: 5/10/15 minutes is a staircase with no such rule, and where the steps fall is a balancing decision. |
-| `monster_template` | Monster definitions: health, attack, mechanics. |
+| `monster_template` | Monster definitions at tier 1: health, armor, and the auto-attack's damage and interval. Deeper tiers multiply health and auto-attack damage by the 8% formula; **armor does not scale**, because the multiplier would compound with the damage reduction and push tier 10 past double. **Mechanics are not stored** — the spin, the pools and the volley bind their numbers to behaviour, so they live in code for the same reason skills do. |
 | `dungeon_run` | One dungeon run. Ongoing, cleared and failed runs all live here — the leaderboard is this table filtered by status, not a table of its own. Duration is computed from the start and end times rather than stored. |
 | `dungeon_drop` | Which gear can drop at which tier, and at what rate. |
 
@@ -161,8 +161,8 @@ talents a player picked.
 
 ## Open
 
-- Column names for the four tables still unbuilt — `monster_template`,
-  `dungeon_drop`, talents and set bonuses.
+- Column names for the three tables still unbuilt — `dungeon_drop`,
+  talents and set bonuses.
 - Whether `stack_template` needs a kind column — potions, crests, seeds and
   materials sit together undifferentiated. Nothing needs to tell them apart
   until consumable key bindings exist, and adding it now would mean fixing

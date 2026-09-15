@@ -264,7 +264,9 @@ and the best tier and nothing else.
 
 ## Not built
 
-- The remaining dungeon tables — `monster_template`, `dungeon_drop`, and
-  whatever the boss needs. Tier-1 monster numbers block all of them.
+- Monster data. `monster_template` exists but holds no rows until tier-1
+  numbers are set, and nothing reads it yet.
+- The remaining dungeon tables — `dungeon_drop`, and whatever the boss
+  needs. Drop rules are still open.
 - Rewards on the completion response.
 - Accounts and login (`design-backlog.md` §4).

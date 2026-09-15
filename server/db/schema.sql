@@ -1,7 +1,7 @@
--- FarmDelve — 지금까지 지은 13개 테이블. 강화·장착 슬라이스가 일곱을 세웠고,
--- 농장 슬라이스가 셋(2026-09-03), 던전 슬라이스가 셋(2026-09-11에 둘,
--- 2026-09-14에 하나)을 더했다.
--- 남은 넷(던전 테이블 2개, 특성, 세트 보너스)은 각자의 슬라이스에서 짓는다.
+-- FarmDelve — 지금까지 지은 14개 테이블. 강화·장착 슬라이스가 일곱을 세웠고,
+-- 농장 슬라이스가 셋(2026-09-03), 던전 슬라이스가 넷(2026-09-11에 둘,
+-- 2026-09-14와 2026-09-15에 하나씩)을 더했다.
+-- 남은 셋(던전 테이블 1개, 특성, 세트 보너스)은 각자의 슬라이스에서 짓는다.
 -- 자세한 근거는 docs/data-model.md.
 --
 -- npm run db:reset 으로 실행한다. 개발 중에는 스키마가 자주 바뀌므로 매번 통째로
@@ -10,6 +10,7 @@
 -- 다시 만들기 전에 지운다. 참조하는 쪽을 먼저 지워야 외래 키가 걸리지 않는다.
 DROP TABLE IF EXISTS dungeon_run;
 DROP TABLE IF EXISTS dungeon_tier_template;
+DROP TABLE IF EXISTS monster_template;
 DROP TABLE IF EXISTS dungeon_template;
 DROP TABLE IF EXISTS player_gear_slot;
 DROP TABLE IF EXISTS gear_instance;
@@ -259,6 +260,47 @@ CREATE TABLE dungeon_tier_template (
   -- 10분, 9~10은 15분.
   time_limit INTERVAL NOT NULL CHECK (time_limit > INTERVAL '0 seconds')
 
+);
+
+
+-- 몬스터의 정의. 트래시 넷(스웜·엘리트 A·엘리트 B·원거리)과 보스가 한 행씩이다.
+--
+-- 담는 것은 티어1 기준값뿐이다. 더 깊은 티어의 값은 8% 복리 공식(1.08^(tier-1))을
+-- 곱해서 얻으므로 행을 티어별로 늘리지 않는다 — dungeon_tier_template에 배율
+-- 컬럼을 두지 않은 것과 같은 이유다.
+--
+-- 기믹(회전·장판·일제사격)의 간격과 데미지는 이 표에 없다(2026-09-15). "10초마다
+-- 회전, 35%부터 6초"는 숫자와 동작이 붙어 있어서, 숫자만 표로 옮겨도 코드는 여전히
+-- 몬스터마다 갈라진다. 플레이어 스킬을 코드 상수로 둔 것과 같은 판단이다.
+-- 이동 속도와 어그로 반경도 모든 몬스터가 같은 값이라 코드 상수다.
+--
+-- 행은 아직 넣지 않는다. 티어1 수치가 정해지기 전이라 넣을 값이 없다.
+CREATE TABLE monster_template (
+  monster_template_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name TEXT NOT NULL,
+
+  -- 체력. 티어 배율이 곱해진다. 0이면 태어나자마자 죽은 몬스터라 막는다 — 전투 중
+  -- 줄어드는 현재 체력은 클라이언트에만 있고, 여기는 정의라 0이 입력 실수다.
+  hp INTEGER NOT NULL CHECK (hp > 0),
+
+  -- 방어. 피해 감소는 armor / (armor + 1000)이고, 0은 방어 없는 몬스터라 허용한다.
+  --
+  -- 티어 배율을 받지 않는다(2026-09-15). 8%는 "티어10이 정확히 2배 = +10 강화"라서
+  -- 고른 숫자인데, 방어까지 오르면 피해 감소가 함께 커져 티어10 유효 체력이 2배가
+  -- 아니라 약 2.33배가 된다.
+  armor INTEGER NOT NULL CHECK (armor >= 0),
+
+  -- 기본 공격 한 대의 데미지. 티어 배율이 곱해진다. 근접 몹은 붙어서, 원거리 몹은
+  -- 멀리서 치지만 같은 칸이다 — 원거리의 일제사격은 기본 공격과 별개인 기믹이다.
+  -- 범위가 아니라 한 값이다(2026-09-15). 백로그의 검산식 melee × monsters attached가
+  -- 한 값을 전제로 한다.
+  auto_attack INTEGER NOT NULL CHECK (auto_attack > 0),
+
+  -- 기본 공격 간격. 기간이라 INTERVAL이지만, 위 time_limit과 달리 SQL에서 시각과
+  -- 계산할 일은 없다 — 전투는 클라이언트에서 돈다. 그래도 "기간이면 INTERVAL"
+  -- 규칙 하나로 두는 편을 골랐다. 읽을 때는 EXTRACT(EPOCH FROM ...)::float8로 바꾼다.
+  auto_attack_interval INTERVAL NOT NULL
+    CHECK (auto_attack_interval > INTERVAL '0 seconds')
 );
 
 
