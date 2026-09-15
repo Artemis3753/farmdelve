@@ -9,8 +9,9 @@ and equipping**, and **farming**. You can plant a crop, wait for it to grow,
 harvest it for produce and gold, refine the produce into an upgrade material,
 and spend that material on a `+1` roll that can fail.
 
-Dungeons have a home in the database now, but no API and no screen yet.
-Combat is still on paper.
+Dungeons have their tables and two endpoints — enter a run, complete it — but
+the screen is still a skeleton: the layout is drawn with placeholder values
+and nothing on it talks to the API yet. Combat is still on paper.
 
 ## 🏃 Running it locally
 
@@ -49,7 +50,7 @@ React + Vite  :5173
 Express       :3001
      │   pg
      ▼
-PostgreSQL          10 tables
+PostgreSQL          14 tables
 ```
 
 - `server/services/` — one file per feature. None of them know about `req` or
@@ -70,6 +71,8 @@ PostgreSQL          10 tables
 | `POST` | `/api/plots/:plotNumber/plant` | body `{ cropTemplateId }` |
 | `POST` | `/api/plots/:plotNumber/harvest` | returns produce, seeds and gold |
 | `POST` | `/api/craft/:recipeId` | spends ingredients, returns the result |
+| `POST` | `/api/dungeon/enter` | body `{ tier }`. Closes any leftover run as failed, then starts a new one |
+| `POST` | `/api/dungeon/:runId/complete` | body `{ cleared }`. An overtime clear counts but does not raise the best tier |
 
 Every write runs in one transaction and either commits whole or rolls back
 whole. A **409** means the request itself was fine but the state disagreed —
@@ -83,13 +86,16 @@ and returns `{ upgraded: false }`.
 - **Not deployed.** Runs locally only, for now.
 - **No migrations.** `schema.sql` drops and recreates everything, so
   `npm run db:reset` wipes the save.
-- Combat, dungeons and the leaderboard are designed but not built.
+- **Dungeon clears are self-reported.** The client says whether a run was
+  cleared; the server only keeps the clock. Accepted for a portfolio game —
+  a leaderboard built on these runs could be cheated.
+- Combat and the leaderboard are designed but not built.
 
 ## 🎯 Planned
 
 - ⚔️ Real-time combat
 - 🗡️ Three weapon specializations — Scythe, Crossbow, Watering Can
-- 🏰 Dungeon tiers
+- 🏰 Playable dungeon runs
 - 🏆 Leaderboard
 
 ## 🎨 Credits
