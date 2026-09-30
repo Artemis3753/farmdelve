@@ -294,10 +294,12 @@ Last updated: 2026-09-04
 ### Pack layout and chain pulling (2026-09-10)
 
 - **Packs are laid out against the player's cooldowns rather than against
-  a difficulty curve.** Market Price Rage runs 60 seconds and a pack takes
-  roughly 40, so it cannot be up for every pack: closing that gap needs 20
-  seconds of walking between packs, and four such walks leave 20 seconds
-  for the boss. The arithmetic settles it — once every two packs.
+  a difficulty curve.** Market Price Rage runs 60 seconds and a pack cycle
+  is 30 — 25 seconds of fighting and 5 of walking — so it comes up once
+  every two packs. Eight cycles and a 60-second boss land exactly on the
+  five-minute limit. (Corrected 2026-09-15: the first version had a pack
+  at 40 seconds plus 20 of walking, which no reading fits inside five
+  minutes — eight packs at 40 already make 320 seconds.)
 - **Which packs get merged is the player's call.** Aggro is 5 tiles
   against a spacing of 10, so dragging one pack into the next is
   deliberate work. Merging is what fills Brutal Swing's five-target cap,
@@ -420,6 +422,112 @@ pass:
 - **The ranged type needs low health.** A melee spec with range 1 walks
   there with its back to the pack. If it is not quick to cut down, nobody
   ever goes.
+
+### Tier-1 numbers (2026-09-15, damage 2026-09-26)
+
+None of this has been played. There is no combat code yet, so every value
+below is a starting point for the first real fights. **What is meant to
+last is the method** — which number anchors the rest and what gets worked
+backwards from what. Values marked *provisional* were set to fill the
+table, not argued over, and are the first to move.
+
+**The anchor is one player number.** Base player DPS is **100**: one
+target, standing still, no cooldowns. Skill coefficients will be fitted to
+it later; monster health is worked backwards from it and from time.
+
+- **Scale: damage in the tens, health in the hundreds to thousands.** A
+  base value under 10 collides under the 8% tier multiplier — rounded, two
+  tiers come out identical. From 10 up, none do.
+- **GCD is 1 second, fixed.** Both references do the same for melee
+  builders and spenders (WoW's energy users, Fellowship's melee combo
+  specs). Combat rules below had already made the melee GCD fixed; this
+  only gives it a value.
+- **Time budget: a pack cycle of 30 seconds** — 25 fighting, 5 walking —
+  and 60 for the boss. Eight cycles plus the boss is exactly 300 seconds,
+  the tier-1 limit.
+- **Kill times inside a pack:** the swarm phase lasts 20 seconds, an
+  elite adds 10 as a single-target finish, a ranged monster adds 5. Pack
+  times come to 20/20/30/30/25/20/35/30. Taken one at a time the run is
+  305 seconds, a little over, and merging the four adjacent pairs that
+  make five brings it to 205 — **100 seconds saved, which is what the
+  damage below has to push back against.**
+- **AoE efficiency is 0.5**: under AoE each target takes half the
+  single-target rate, so AoE breaks even at two targets — the same point
+  where Brutal Swing starts beating Furious Thrust in `spec-note.txt`.
+
+**Health and armor.**
+
+| Monster | Health | Armor | Effective health |
+|---|--:|--:|--:|
+| Swarm — Field Rat | 1000 | 0 | 1000 |
+| Elite A — Thresher | 1600 | 250 | 2000 |
+| Elite B — Blight Slug | 1600 | 250 | 2000 |
+| Ranged — Seedspitter | 1500 | 0 | 1500 |
+
+- Elites at **twice the swarm** keep "too much health to melt with AoE"
+  true: when the swarm dies the elite still has half.
+- **Only the elites have armor** (*provisional*). 250 armor is 20%
+  reduction, and health drops to 1600 so the kill time does not move.
+  What changes is that bleeds, which ignore armor, are worth more against
+  the elites than anything else — the target the single-target finish is
+  built around. Armor on every monster would make that edge uniform, which
+  is the same as not having it.
+
+**Damage.** Set against a single four-monster pack, as §2 required, from
+one sentence: *one pack costs about a pickup, two packs cost a potion,
+three packs cannot be outlasted with one.*
+
+- **Player health is 1000**, the total a starting tier-1 set gives. How it
+  splits between base and gear is still open.
+- **A four-monster pack kills in 40 seconds with no healing and no
+  armor.** 30 was harsh once health carries from pack to pack; 50 let a
+  three-pack pull live on a single potion.
+- **Split swarm : elite : ranged = 1 : 2 : 1.** The swarm is described as
+  weak melee; the elite is worth two swarm, the same ratio as its health;
+  the ranged type's threat already comes from its volley, so its ordinary
+  attack stays at swarm level instead of charging for it twice.
+- That gives **auto-attacks of 10 / 20 / 10 every 2 seconds.**
+
+**Mechanics** (*provisional*):
+
+| Mechanic | Value |
+|---|---|
+| Spin (elite A) | 150 per hit, every 10 s; enraged every 6 s, and auto-attack 20 → 30 |
+| Pools (elite B) | One every 6 s, each lasting 12 s, 10 per second standing in it |
+| Volley (ranged) | 60 every 8 s |
+
+The pool test from §2 passes: standing in pools for a full 30-second pull
+costs 420, under half of 1000.
+
+**Healing** (*provisional*):
+
+| Source | Value |
+|---|---|
+| Potion | 600 (60%), 180 s cooldown |
+| Ground pickup | 150 (15%), 60 s cooldown — 2.5 per second against the potion's 3.3 |
+| Whirling Slash completion | 20 |
+| **Out of combat** | **20% per second** — five seconds of walking refills |
+
+- **Out-of-combat regeneration is a new rule** (2026-09-30). Nothing
+  before it said whether health comes back between packs, and without it
+  a solo run's damage does not fit inside the potion rule — ordinary
+  attacks alone come to over 3100 across the eight packs. "Out of combat"
+  means no monster is engaged.
+- With it, **every single pack is survivable without a potion**, the
+  (3,4) merge ends with 190 left, and (7,8) goes negative — the potion is
+  what makes the hardest merge possible.
+- **It also makes merging cost more than the damage formula says.** A
+  merged pull skips the walk between the two packs, and the walk is where
+  health comes back.
+- It does not touch the boss rule. The boss appears the instant the last
+  pack dies, with no walk in between, so arriving hurt with the potion on
+  cooldown is still part of the run.
+- The potion now comes up at most twice a run. That second use is a brake
+  nobody designed, and it is worth watching once runs are real.
+
+Still open: the pickup's lifetime and spawn distance, the boss's numbers,
+and the starting gear — its armor of 2 per slot is two orders of magnitude off
+what `armor / (armor + 1000)` needs to mean anything.
 
 ### How gear is obtained (2026-08-25)
 
@@ -656,7 +764,9 @@ Blocking the dungeon, not the code:
   Pack layout and chain pulling above. **The counts stay provisional until
   tier-1 numbers exist** — whether 22 fits inside five minutes depends on
   what dies how fast.
-- **Tier-1 monster numbers** — health, armor, damage, plus the intervals
+- ~~**Tier-1 monster numbers**~~ — **settled 2026-09-15 and 2026-09-26,
+  values provisional.** See Tier-1 numbers above. The reasoning that set
+  them is kept below. Health, armor, damage, plus the intervals
   and damage for the three mechanics now written (spin, pools, volley).
   Two things to work backwards from:
   - **Time.** Tier 1 allows five minutes, and eight packs plus a boss have
@@ -697,7 +807,10 @@ Non-blocking:
   ~14 targets over a five-point channel; one-second ticks reach 6–8.
 - Whether a spread bleed landing on an already-bleeding target follows the
   pandemic rule.
-- **The three healing sources have to be balanced against each other**:
+- **The three healing sources have to be balanced against each other** —
+  *provisional values set 2026-09-26, plus a fourth source, out-of-combat
+  regeneration; see Tier-1 numbers above.* Still open: the pickup's
+  lifetime and spawn distance. The original question:
   the potion (60%, 180s shared cooldown), ground pickups (~15–20%, on a
   cooldown, only while injured), and Whirling Slash's completion heal.
   Open numbers: the pickup's cooldown, heal, lifetime, and spawn distance;
@@ -725,7 +838,7 @@ Non-blocking:
   cuts against Overhead Slam's deliberately smooth curve. Intended synergy,
   or move one of them?
 - Names for the thirteen talents.
-- Critical strike's K value; base GCD.
+- Critical strike's K value. (Base GCD settled 2026-09-15: 1 second.)
 - Starting scythe's base stats. **A placeholder went into the database on
   2026-08-28** — 10 attack power, everything else zero. Real
   numbers wait on monster health, since "what dies in 40 seconds" is what
@@ -744,7 +857,9 @@ Non-blocking:
 - Greenhouse screen contents. The grid size itself is settled — 25 plots.
 - Pandemic formula specifics.
 - In-game calendar (days, seasons) or real elapsed time only?
-- Farm-themed monster roster: crop creatures, crop thieves, and so on.
+- ~~Farm-themed monster roster~~ — **named 2026-09-30**: Field Rat,
+  Thresher, Blight Slug, Seedspitter. Each name hints at its mechanic. The
+  boss is still unnamed.
 
 ---
 
@@ -768,7 +883,8 @@ Non-blocking:
 - [x] **Trash mechanics** — spin, pools, volley
 - [ ] Names for the thirteen talents (owner: Jihwan)
 - [ ] The two boss mechanics — parked until the trash is playable
-- [ ] Monster base numbers and roster
+- [x] **Monster base numbers and roster** — trash only, provisional,
+      2026-09-30. The boss waits on its mechanics
 - [ ] Crossbow skill list *(outside the DoD — paper only)*
 - [ ] Watering Can skill list *(outside the DoD — paper only)*
 
@@ -778,8 +894,8 @@ Table list is settled — see `data-model.md`. What is left:
 
 - [x] **Column names for the upgrade slice** — seven tables, 2026-08-27
 - [x] **Where gold lives** — a column on `player`
-- [ ] Column names for the remaining three tables, slice by slice. Fourteen
-      of seventeen are built: seven from upgrading, three from the farm, four
+- [ ] Column names for the remaining three tables, slice by slice. Fifteen
+      of eighteen are built: seven from upgrading, three from the farm, five
       from the dungeon
 - [x] **Save timing strategy** — settled 2026-09-14, see §2 above
 - [ ] **Drop details** — per-tier drop rates, duplicate handling, how many

@@ -50,7 +50,7 @@ React + Vite  :5173
 Express       :3001
      │   pg
      ▼
-PostgreSQL          14 tables
+PostgreSQL          15 tables
 ```
 
 - `server/services/` — one file per feature. None of them know about `req` or

@@ -1,11 +1,11 @@
 # Data Model
 
-Table list for the DoD scope. Each entry says what the table holds. Thirteen
-of the seventeen exist with their columns named — the upgrading slice built
-seven, the farm slice three, the dungeon slice three. The remaining four get
+Table list for the DoD scope. Each entry says what the table holds. Fifteen
+of the eighteen exist with their columns named — the upgrading slice built
+seven, the farm slice three, the dungeon slice five. The remaining three get
 theirs when their slice arrives.
 
-Last updated: 2026-09-14
+Last updated: 2026-09-30
 
 ## Naming convention
 
@@ -86,6 +86,7 @@ points earned.
 | `dungeon_template` | The definition of a dungeon. Only one dungeon is in the DoD, but naming it `template` leaves room to add more without renaming anything. |
 | `dungeon_tier_template` | Per tier 1-10: the time limit, and nothing else. Ten rows, `tier` itself the primary key. The 8% scaling multiplier is **not** a column — one rule produces all ten values, so storing them would mean keeping ten rounded numbers correct by hand. The time limit is the opposite: 5/10/15 minutes is a staircase with no such rule, and where the steps fall is a balancing decision. |
 | `monster_template` | Monster definitions at tier 1: health, armor, and the auto-attack's damage and interval. Deeper tiers multiply health and auto-attack damage by the 8% formula; **armor does not scale**, because the multiplier would compound with the damage reduction and push tier 10 past double. **Mechanics are not stored** — the spin, the pools and the volley bind their numbers to behaviour, so they live in code for the same reason skills do. |
+| `monster_pack` | Which monsters stand in which pack, and how many: one row per monster type per pack, so eight packs of 22 monsters take 14 rows. `monster_template` says what a monster *is*; this says where it *appears* — the split WoW makes between `creature_template` and `creature`. Pack positions are not stored, since spacing is a fixed 10 tiles and the boss spawns where the last pack dies. |
 | `dungeon_run` | One dungeon run. Ongoing, cleared and failed runs all live here — the leaderboard is this table filtered by status, not a table of its own. Duration is computed from the start and end times rather than stored. |
 | `dungeon_drop` | Which gear can drop at which tier, and at what rate. |
 
