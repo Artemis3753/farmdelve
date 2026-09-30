@@ -275,7 +275,8 @@ CREATE TABLE dungeon_tier_template (
 -- 몬스터마다 갈라진다. 플레이어 스킬을 코드 상수로 둔 것과 같은 판단이다.
 -- 이동 속도와 어그로 반경도 모든 몬스터가 같은 값이라 코드 상수다.
 --
--- 행은 아직 넣지 않는다. 티어1 수치가 정해지기 전이라 넣을 값이 없다.
+-- 트래시 넷의 행은 seed.sql 15번 블록에 있다(2026-09-30, 잠정값). 보스 행은 기믹이
+-- 정해진 뒤에 넣는다.
 CREATE TABLE monster_template (
   monster_template_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name TEXT NOT NULL,
@@ -317,8 +318,8 @@ CREATE TABLE monster_template (
 -- 팩의 위치는 없다. 간격이 10칸 고정이라 팩 번호로 계산되고, 보스는 마지막 팩이
 -- 죽은 자리에 나온다 — 둘 다 규칙이라 저장하지 않는다.
 --
--- 행은 아직 넣지 않는다. 가리킬 monster_template 행이 없어서 FK에 걸린다. 넣을
--- 구성표는 백로그 Pack layout and chain pulling에 있다(8팩 22마리, 14행).
+-- 행은 seed.sql 16번 블록에 있다(2026-09-30). 구성표의 원본은 백로그 Pack layout
+-- and chain pulling이다(8팩 22마리, 14행).
 CREATE TABLE monster_pack (
 
   -- 어느 던전의 팩인가. 두 번째 던전이 생기면 행만 늘어난다

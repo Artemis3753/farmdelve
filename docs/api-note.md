@@ -264,8 +264,8 @@ and the best tier and nothing else.
 
 ## Not built
 
-- Monster data. `monster_template` exists but holds no rows until tier-1
-  numbers are set, and nothing reads it yet.
+- Reading monster data. `monster_template` and `monster_pack` are seeded
+  with provisional tier-1 values, but no endpoint serves them yet.
 - The remaining dungeon tables — `dungeon_drop`, and whatever the boss
   needs. Drop rules are still open.
 - Rewards on the completion response.

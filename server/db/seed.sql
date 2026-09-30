@@ -264,3 +264,61 @@ VALUES
   ( 1, INTERVAL '5 minutes'), ( 2, INTERVAL '5 minutes'), ( 3, INTERVAL '5 minutes'), ( 4, INTERVAL '5 minutes'),
   ( 5, INTERVAL '10 minutes'), ( 6, INTERVAL '10 minutes'), ( 7, INTERVAL '10 minutes'), ( 8, INTERVAL '10 minutes'),
   ( 9, INTERVAL '15 minutes'), (10, INTERVAL '15 minutes');
+
+
+-- 15. 트래시 몬스터 넷의 티어1 값. 수치는 백로그 §1 Tier-1 numbers에서 왔고, 전투
+--     코드가 없어 아직 한 번도 싸워보지 않은 값이라 전부 잠정이다.
+--
+--     체력은 플레이어 DPS 100에서 거꾸로 셌다 — 스웜은 광역 구간 20초에 녹고,
+--     엘리트는 광역 뒤에 절반이 남아 단일 마무리를 만들고, 원거리는 걸어가서 벨
+--     만한 값이다.
+--
+--     엘리트 둘만 방어가 있다. 체력 1600에 방어 250(피해 감소 20%)이면 유효 체력은
+--     2000 그대로라 처치 시간은 안 바뀌고, 출혈(방어 무시)이 엘리트에게만 더 잘
+--     드는 차이가 생긴다. 스웜·원거리까지 방어를 주면 출혈이 모든 대상에서 같은
+--     이득이 되어 차이가 사라진다.
+--
+--     기본 공격은 스웜:엘리트:원거리 = 1:2:1이다. 네 마리 팩을 회복 없이 40초 맞으면
+--     죽는다는 기준에서 역산했다. 10 아래로 내리지 않는 것은 8% 복리를 반올림할 때
+--     두 티어가 같은 값이 되지 않게 하려는 것이다.
+--
+--     이름은 "농장 소재 몬스터"라는 백로그 방향에 맞춰 붙였다. 기믹이 이름에서 읽히게
+--     골랐다 — 탈곡기(Thresher)는 돈다, 민달팽이(Slug)는 지나간 자리에 장판을 남긴다,
+--     씨앗을 뱉는 것(Seedspitter)은 멀리서 쏜다. 코드와 엮이지 않아 바꿔도 깨지는
+--     곳이 없다.
+--
+--     보스는 아직 없다. 기믹 둘이 보류라 넣을 수치가 없다.
+INSERT INTO monster_template (name, hp, armor, auto_attack, auto_attack_interval)
+VALUES
+  ('Field Rat',   1000,   0, 10, INTERVAL '2 seconds'),  -- 스웜
+  ('Thresher',    1600, 250, 20, INTERVAL '2 seconds'),  -- 엘리트 A, 회전
+  ('Blight Slug', 1600, 250, 20, INTERVAL '2 seconds'),  -- 엘리트 B, 장판
+  ('Seedspitter', 1500,   0, 10, INTERVAL '2 seconds');  -- 원거리, 일제사격
+
+
+-- 16. The Fallow Deep의 팩 구성 — 8팩 22마리, 14행. 백로그 §1 Pack layout and
+--     chain pulling의 표를 그대로 옮겼다.
+--
+--     id를 숫자로 적지 않고 이름으로 찾는다. id는 IDENTITY가 매기는 값이라
+--     15번 블록의 행 순서가 바뀌면 같이 바뀐다 — 숫자로 적어두면 그때 틀린 몬스터를
+--     조용히 가리킨다. 12번 블록이 씨앗을 이름으로 찾은 것과 같은 이유다.
+--
+--     한 줄에 한 팩씩 적는다. 팩 번호를 따라 읽으면 백로그 표와 한 줄씩 맞춰볼 수 있다.
+--
+--     주의: 이름에 오타가 있으면 JOIN이 그 행을 에러 없이 빼버린다. 행이 14개보다
+--     적게 들어갔다면 이름부터 볼 것.
+INSERT INTO monster_pack (dungeon_template_id, pack_number, monster_template_id, amount)
+SELECT d.dungeon_template_id, v.pack_number, m.monster_template_id, v.amount
+  FROM (VALUES
+    (1, 'Field Rat', 2),
+    (2, 'Field Rat', 3),
+    (3, 'Field Rat', 2), (3, 'Thresher', 1),
+    (4, 'Field Rat', 1), (4, 'Blight Slug', 1),
+    (5, 'Field Rat', 2), (5, 'Seedspitter', 1),
+    (6, 'Field Rat', 2),
+    (7, 'Field Rat', 2), (7, 'Thresher', 1), (7, 'Seedspitter', 1),
+    (8, 'Field Rat', 2), (8, 'Blight Slug', 1)
+  ) AS v (pack_number, monster_name, amount)
+  JOIN monster_template m ON m.name = v.monster_name
+  CROSS JOIN dungeon_template d
+ WHERE d.name = 'The Fallow Deep';
