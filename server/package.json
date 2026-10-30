@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node --env-file=.env index.js",
+    "test": "vitest run",
     "db:reset": "set -a && . ./.env && set +a && psql -v ON_ERROR_STOP=1 \"$DATABASE_URL\" -f db/schema.sql && psql -v ON_ERROR_STOP=1 \"$DATABASE_URL\" -f db/seed.sql"
   },
   "keywords": [],
@@ -14,5 +15,8 @@
   "dependencies": {
     "express": "^5.2.1",
     "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.5"
   }
 }
