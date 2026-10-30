@@ -62,12 +62,21 @@ body  none
 
 ```
 body  none
-200   { stacks, gear, upgrades, crops, recipes }
+200   { stacks, gear, upgrades, crops, recipes, monsters, packs }
 500   internal_error
 ```
 
 > Same answer for everyone, so it takes no player id and is meant to be
 > fetched once and cached.
+>
+> `monsters` carries **tier-1 values only**. The client multiplies by
+> `1.08^(tier-1)` itself — scaling here would need the tier, and the answer
+> would stop being the same for everyone. `autoAttackSeconds` is not divided
+> by `TIME_SCALE`, for the same reason `timeLimitSeconds` is not: the dungeon
+> is fought in real time.
+>
+> `packs` is one flat row per monster type per pack, like every other list
+> here; grouping by pack is the client's job.
 
 ### `GET /api/player`
 
@@ -264,8 +273,10 @@ and the best tier and nothing else.
 
 ## Not built
 
-- Reading monster data. `monster_template` and `monster_pack` are seeded
-  with provisional tier-1 values, but no endpoint serves them yet.
+- Combat. The dungeon screen reads the monsters and the pack layout from
+  `/api/templates` and draws them in the corridor, but nobody fights yet:
+  the client rules cover walking only, with no attacks, damage, or monster
+  behavior.
 - The remaining dungeon tables — `dungeon_drop`, and whatever the boss
   needs. Drop rules are still open.
 - Rewards on the completion response.

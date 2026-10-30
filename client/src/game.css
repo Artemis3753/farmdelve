@@ -342,18 +342,49 @@ button.plot:enabled:hover {
   margin-bottom: 12px;
 }
 
-.dungeon-view {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 12px;
+/* 복도. 가로 칸 수는 Dungeon.jsx가 인라인 style로 넘긴다 — 여기 적으면 17이
+   두 파일에 생긴다. 세로 줄 수는 적지 않아도 칸이 17개마다 다음 줄로 넘어간다. */
+.corridor {
+  display: grid;
+  gap: 2px;
+  max-width: 720px;
   margin-bottom: 16px;
 }
 
-.dungeon-direction {
-  display: block;
+.tile {
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--code-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
   font-size: 13px;
-  opacity: 0.6;
-  margin-bottom: 8px;
+}
+
+/* 복도 밖. 칸은 자리를 차지한 채 안 보이게만 한다 — 지워버리면 뒤의 칸들이
+   당겨져서 플레이어가 가운데에서 밀려난다. */
+.tile-void {
+  border-color: transparent;
+  background: transparent;
+}
+
+.tile-player {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+/* 몬스터 칸. 다 큰 밭과 반대 뜻이라 초록 대신 붉은 쪽을 쓴다(Chili Pepper 색). */
+.tile-monster {
+  border-color: #B4402F;
+  color: #B4402F;
+  font-weight: 700;
+}
+
+.tile-icon {
+  width: 70%;
+  height: 70%;
 }
 
 /* 분노 다섯 칸. 자원을 칸으로 세기로 한 결정이 화면에도 그대로 드러난다. */
