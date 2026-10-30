@@ -172,8 +172,14 @@ Last updated: 2026-09-04
 
 - **The dungeon is one corridor, nine tiles tall, that scrolls
   horizontally.** The route runs left to right and the camera follows the
-  player, who stays centred — so sixteen tiles are on screen, eight ahead
-  and eight behind.
+  player, who stays centred — so seventeen tiles are on screen: eight
+  ahead, eight behind, and the player's own. (Written as sixteen until
+  2026-09-30; a centred player needs an odd width.)
+- **Movement speed is 2 tiles per second** — one step every 0.5 seconds
+  (*provisional*, 2026-09-30). The time budget allows 5 seconds of walking
+  per pack, and packs sit 10 tiles apart, so this is the slowest speed that
+  still covers the whole gap in 5 seconds. It also leaves a spin's 2-second
+  wind-up room for four steps, not one.
 - **The screen's long side had to be the direction of travel.** A vertical
   corridor makes the short side the way forward: nine tiles of warning no
   matter how wide the corridor gets. Turning it sideways doubles that for
