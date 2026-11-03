@@ -655,14 +655,21 @@ what was written on 2026-08-25.
   - Armor: `armor / (armor + 1000)`. Being a division it cannot reach
     100%, so no separate cap rule is needed.
   - Critical strike: same shape, K still open.
-  - WoW and Fellowship both use banded diminishing returns instead — WoW
-    takes no penalty to 30% and then 10/20/30/40/50% by band, Fellowship
-    gives full value to 10% and 0.8× past 25%. The division curve is
+  - WoW and Fellowship both use banded diminishing returns instead. WoW
+    takes no penalty to 30% and then 10/20/30/40/50% by band
+    ([Warcraft Wiki](https://warcraft.wiki.gg/wiki/Combat_rating_system),
+    patch 9.0.1 table; the page is marked outdated). Fellowship gives full
+    value to 10% and less past it, but its sources disagree on the floor
+    past 25%: 0.8× on [Fextralife](https://fellowship.wiki.fextralife.com/Stats),
+    58.2% on [FellowBIS](https://fellowbis.com/stats-guide). Both checked
+    2026-11-03. The division curve is
     diminishing returns as well, smooth rather than stepped. It was chosen
     because one formula covers every percent stat and there is no band
     table to maintain. What it gives up is the "linear until the
     threshold" feel; revisit here if scaling ever reads as flat.
-- **Bleeds ignore armor**, as in WoW. Monster armor does not scale with
+- **Bleeds ignore armor**, as in WoW
+  ([Warcraft Wiki](https://warcraft.wiki.gg/wiki/Bleed), checked
+  2026-11-03). Monster armor does not scale with
   tier (see Dungeon loop and rewards), so the bleed's edge over direct
   damage is the same at every depth — it grows with the target's armor,
   not with the tier.
