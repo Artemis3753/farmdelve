@@ -13,6 +13,12 @@ Dungeons have their tables and two endpoints — enter a run, complete it — bu
 the screen is still a skeleton: the layout is drawn with placeholder values
 and nothing on it talks to the API yet. Combat is still on paper.
 
+## 🤖 Working with Claude Code
+
+[`CLAUDE.md`](CLAUDE.md) is the instruction file for Claude Code in this repo. The rule in it is to look up how WoW and Fellowship solved the same problem before offering options, and to put the comparison into the options: "Put the comparison into the options, then ask."
+The "Stats" section of [`docs/design-backlog.md`](docs/design-backlog.md) compares the armor formula `armor / (armor + 1000)` with the banded diminishing returns used by WoW and Fellowship.
+The repo has no hooks and no custom commands.
+
 ## 🏃 Running it locally
 
 Built against **Node 26** and **PostgreSQL 17**; older versions are untested.
