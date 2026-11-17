@@ -419,6 +419,12 @@ skill bar and the Rage bar were checked by hand in the browser.
   feel stiff. WoW has the same idea in its spell queue window (0–400 ms,
   from a community guide); no Fellowship source on the GCD or an input queue
   was found. Three ticks, 0.3 seconds, is a placeholder to be felt out.
+- **The skill slot lights up when a press would be accepted**, three ticks
+  before the GCD ends, not when it is over. Lit only after the GCD, it taught
+  players to press when it lit and lose their reaction time on every cast:
+  measured at about 0.1–0.14 s of a 1.0 s cycle, mashing out-paced pressing
+  once per GCD by 10–14%. Lit three ticks early, pressing when it lights
+  gives the same pace as mashing (about 1.0 s per cast).
 - **A skill that cannot be used costs nothing.** With no target, or a target
   beyond range 1, there is no damage, no Rage and no GCD. A remembered skill
   that has become unusable when the GCD ends is dropped the same way.

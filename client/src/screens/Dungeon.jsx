@@ -13,6 +13,7 @@ import {
   createInitialState,
   CORRIDOR_HEIGHT,
   CORRIDOR_LENGTH,
+  QUEUE_WINDOW_TICKS,
   TICKS_PER_SECOND,
 } from '../combat/rules.js'
 
@@ -251,11 +252,15 @@ function DungeonRun({ templates, onLeave, onRetry }) {
 
         <ul className="slot-row">
           {SKILL_SLOTS.map((n) => {
-            // 스킬이 놓인 칸은 색을 입히고, GCD가 도는 동안은 어둡게 한다(다시 쓸 수 없다는 표시).
+            // 스킬이 놓인 칸은 색을 입히고, 지금 눌러도 소용없는 동안은 어둡게 한다.
+            //
+            // GCD가 끝나기 QUEUE_WINDOW_TICKS 전부터는 눌러도 받아 주고(끝나는 틱에 나간다) 연타와
+            // 같은 속도가 나오므로, 그 시점에 밝힌다. GCD가 완전히 끝난 뒤에야 밝히면 밝아진 걸 보고
+            // 누르는 사람은 반응 시간만큼 늦어서, 연타가 더 빠른 구조가 된다(2026-11-17 직접 눌러 확인).
             const skill = SLOT_SKILLS[n]
             let className = 'skill-key'
             if (skill) className += ' skill-key-bound'
-            if (skill && state.gcdReadyTick > state.tick) className += ' skill-key-gcd'
+            if (skill && state.gcdReadyTick - state.tick > QUEUE_WINDOW_TICKS) className += ' skill-key-gcd'
 
             return (
               <li key={n} className={className} title={skill ? SKILL_LABELS[skill] : undefined}>

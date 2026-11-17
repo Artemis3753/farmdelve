@@ -356,7 +356,11 @@ rat dies after 25 hits the target moves to the other rat and the damage taken dr
 20 to 10 per 2 seconds. Then key 1: with no target it does nothing; with a target it hits
 for 80, fills the first Rage cell and dims slot 1 for the GCD; a second press 0.5 s before
 the GCD ends is dropped, and a press 0.2 s before it ends fires the moment the GCD ends
-(measured 1.0 s after the first cast); the auto-attack keeps its own timer.
+(measured 1.0 s after the first cast); the auto-attack keeps its own timer. Mashing the
+key casts once per GCD (0.98–1.01 s apart), with no double casts. While the slot lit only
+after the GCD ended, pressing 0.15 s after it lit was 10–14% slower than mashing (1.10–1.14
+s per cast), so the slot now lights 3 ticks early, when a press is accepted, and the two
+match (about 1.0 s per cast).
 
 ## Not covered yet
 
