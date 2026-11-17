@@ -3,7 +3,7 @@
 Working document. Tracks what is decided, what is still open, and what is
 deliberately out of scope. Updated as design sessions go.
 
-Last updated: 2026-09-04
+Last updated: 2026-11-17
 
 ---
 
@@ -341,6 +341,70 @@ Last updated: 2026-09-04
   pool laid in its last seconds is still on the ground when the boss
   appears.** Two existing rules meeting, not a designed moment.
 
+### Aggro, chase and attacks (2026-11-17)
+
+Writing the first combat code (`client/src/combat/rules.js`) forced a set of
+rules the sections above left open. The rules themselves are covered by
+tests, listed in `test-plan.md`; the two screen behaviors, "Try again" and
+the click to target, were checked by hand in the browser instead. WoW and
+Fellowship were checked first; what they gave is noted per rule, and it comes
+from community wikis and guides, not official documents.
+
+- **Aggro is per pack, and the radius is a square.** One monster inside the
+  radius pulls its whole pack. Radius 5 is the larger of the horizontal and
+  vertical tile difference — the same ruler as "range N" in Grid movement,
+  so closing in diagonally costs the same as closing in straight. A pack is
+  what the dungeon places and a pull is what the player drags, and the
+  five-target arithmetic above assumes a pack arrives together. WoW's social
+  aggro pulls only some mob types together; Fellowship guides describe
+  pulling a whole pack with area skills.
+- **Monsters chase at the player's speed and never give up.** One tile per
+  five ticks, every chasing monster on the same beat, and no leash. Equal
+  speed means monster movement adds no balance number, which is what the
+  volley rule was written to avoid. A leash that ever fires has to be
+  measured from the spawn, and by rough count a two-pack pull needs about
+  6–8 tiles of it and a three-pack pull about 15, so a short leash would turn
+  the three-pack pull from "the most expensive option" into an impossible
+  one. WoW's instance trash generally has no leash; no Fellowship source on
+  leashing was found. One consequence: walking away does not escape melee
+  monsters, who follow at the same pace.
+- **Monsters stop within range 1 and hit on contact.** Range 1 includes
+  diagonals, as it does for the player. The first swing lands the tick a
+  monster arrives, then one swing every two seconds, each monster on its own
+  timer so a pack does not hit in one burst. The timer keeps running while a
+  monster is out of range, so stepping away and back neither dodges nor
+  refreshes a swing. Damage is the 10 / 20 / 20 / 10 from Tier-1 numbers.
+  WoW's auto-attacks stop out of range and resume in range; whether a mob's
+  first swing is immediate was not found, so landing it on contact is our
+  choice.
+- **Defeat stops combat.** At 0 health everything freezes and the screen
+  offers "Try again", which rebuilds the corridor at full health. That is
+  the Death rule above: no penalty. A Fellowship guide says death costs only
+  time.
+- **Targeting is a click.** The player clicks a monster to make it the primary
+  target, and clicking it again clears it. Any monster can be selected at any
+  distance; range matters only when swinging. The spec note treats "no target
+  selected" as a real state and says targeting is not optional for the
+  bleed-spreading build, so nothing is picked automatically at the start. No
+  usable source on target selection was found for either game.
+- **Auto-attack numbers are provisional.** It hits the target only, inside
+  range 1, the tick it arrives and then every two seconds — "medium" weapon
+  speed, given the value 2 s. Damage is **40 per hit**: attack power 10 (the
+  placeholder scythe) times a coefficient of 4. Armor reduces it by
+  `armor / (armor + 1000)` and the result is rounded to a whole number, so a
+  250-armor elite takes 32. Skills will be fitted to the 100 DPS anchor later;
+  with auto-attacks alone a two-rat pack takes about 100 seconds and costs
+  about 750 health, so the pack-cycle time budget does not hold until skills
+  exist.
+- **A kill removes the monster and passes the target on.** At 0 health or
+  below a monster is removed. If it was the target, the nearest monster that
+  already has aggro becomes the target (square distance, ties to the lower
+  id), and if none has aggro there is no target. Idle monsters are never
+  picked, so finishing one pack cannot wake the next.
+- **Order inside a tick:** the player moves, the monsters chase, the monsters
+  hit, then the player hits. A monster about to die still lands its last
+  hit, and a player killed that tick does not swing.
+
 ### Trash mechanics (2026-08-27)
 
 Three of the five mechanics are written. **The two boss mechanics are left
@@ -431,8 +495,9 @@ pass:
 
 ### Tier-1 numbers (2026-09-15, damage 2026-09-26)
 
-None of this has been played. There is no combat code yet, so every value
-below is a starting point for the first real fights. **What is meant to
+None of this has been played. Combat code exists now (2026-11-17) but has no
+skills yet, so every value below is a starting point for the first real
+fights. **What is meant to
 last is the method** — which number anchors the rest and what gets worked
 backwards from what. Values marked *provisional* were set to fill the
 table, not argued over, and are the first to move.
@@ -886,6 +951,11 @@ Non-blocking:
 - [x] Scythe talent tree — thirteen talents, five tiers
 - [x] Skill shapes and ranges in tiles — meters dropped
 - [x] Auto-attack rules — primary target only, generates no Rage
+- [x] **Aggro, chase, monster attacks and defeat** — built and tested
+      2026-11-17, see "Aggro, chase and attacks"
+- [x] **Player auto-attack and click targeting** — built and tested
+      2026-11-17, numbers provisional
+- [ ] Skills, Rage and the trash mechanics in code — not built
 - [x] **Trash mechanics** — spin, pools, volley
 - [ ] Names for the thirteen talents (owner: Jihwan)
 - [ ] The two boss mechanics — parked until the trash is playable
