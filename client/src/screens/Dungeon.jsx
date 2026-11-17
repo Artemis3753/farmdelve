@@ -6,13 +6,14 @@
 //
 // 헤더와 스킬창의 숫자는 아직 자리를 채우는 값이다.
 
-import { useReducer } from 'react'
+import { useEffect, useReducer } from 'react'
 import Icon from '../components/Icon.jsx'
 import {
   combatReducer,
   createInitialState,
   CORRIDOR_HEIGHT,
   CORRIDOR_LENGTH,
+  TICKS_PER_SECOND,
 } from '../combat/rules.js'
 
 // 화면에 보이는 가로 칸 수. 플레이어가 가운데 서고 앞뒤로 8칸씩 보인다
@@ -20,6 +21,21 @@ import {
 const VIEW_WIDTH = 17
 
 const SKILL_SLOTS = [1, 2, 3, 4, 5, 6, 7]
+
+// 키 → 방향. 방향키와 WASD를 같이 받는다. event.key가 아니라 event.code("KeyW")를
+// 쓰는 것은, 한글 입력 상태에서는 W를 눌러도 event.key가 'ㅈ'이 되기 때문이다.
+// code는 키보드의 물리 위치라 입력 언어와 상관없다. 키 재설정은 전투 슬라이스에서
+// 이 표를 바꾸는 방식으로 붙일 수 있다.
+const KEY_DIRECTIONS = {
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  KeyW: 'up',
+  KeyS: 'down',
+  KeyA: 'left',
+  KeyD: 'right',
+}
 
 function Dungeon({ templates, onLeave }) {
   // useReducer는 useState의 사촌이다. useState는 화면이 새 값을 직접 끼워 넣지만
@@ -32,14 +48,76 @@ function Dungeon({ templates, onLeave }) {
   // 자리에 바로 적으면 렌더할 때마다 22마리를 다시 세우고 버리게 된다 —
   // Greenhouse의 useState(() => Date.now())와 같은 이유다.
   //
-  // 돌려받는 배열의 둘째 칸(dispatch)은 아직 안 꺼낸다. 일을 알릴 곳이 생기는
-  // 다음 조각(틱)에서 꺼낸다.
-  //
-  const [state] = useReducer(
+  // 돌려받는 배열의 둘째 칸 dispatch가 "무슨 일이 일어났다"를 규칙서에 알리는
+  // 창구다. 아래 타이머가 이걸 부른다.
+  const [state, dispatch] = useReducer(
     combatReducer,
     templates,
     (t) => createInitialState(t.monsters, t.packs),
   )
+
+  // 틱 타이머. 던전 화면이 떠 있는 동안 0.1초마다 "틱이 지났다"고 규칙서에 알린다.
+  // 규칙서는 시간을 스스로 재지 않는다 — 이 알람이 울려야만 시간이 흐른다.
+  useEffect(() => {
+    // setInterval의 간격은 밀리초다. 100을 직접 적지 않고 초당 틱 수에서 계산해서,
+    // 틱 길이를 바꿀 때 이 줄이 따라오게 한다.
+    const id = setInterval(() => {
+      dispatch({ type: 'tick' })
+    }, 1000 / TICKS_PER_SECOND)
+
+    // 화면을 떠날 때(Abandon run) 알람을 끈다. StrictMode(main.jsx)가 개발 중에
+    // "등록 → 정리 → 다시 등록"을 일부러 해서, 여기가 빠지면 알람이 두 개가 되어
+    // 캐릭터가 두 배 빨리 걷는다.
+    return () => clearInterval(id)
+    // 빈 배열 = 화면이 뜰 때 한 번만 등록. dispatch는 React가 렌더마다 바뀌지 않게
+    // 보장하는 함수라 목록에 넣을 필요가 없다.
+  }, [])
+
+  // 키 입력. 키를 누르면 "그 방향으로 가기 시작"(moveStart), 떼면 "멈춤"(moveStop)을
+  // 규칙서에 알리기만 한다. 실제로 걷는 것은 위의 틱이다.
+  useEffect(() => {
+    function handleKeyDown(event) {
+      const direction = KEY_DIRECTIONS[event.code]
+      if (!direction) return
+
+      // 방향키는 기본으로 페이지를 스크롤하므로 막는다. 매핑된 키만 막는다.
+      event.preventDefault()
+
+      // 키를 계속 누르고 있으면 브라우저가 keydown을 반복해서 보낸다. 시작은 한 번이면
+      // 되고, 반복마다 알리면 화면만 쓸데없이 다시 그려진다.
+      if (event.repeat) return
+
+      dispatch({ type: 'moveStart', direction })
+    }
+
+    function handleKeyUp(event) {
+      const direction = KEY_DIRECTIONS[event.code]
+      if (!direction) return
+
+      dispatch({ type: 'moveStop', direction })
+    }
+
+    // 키를 누른 채 다른 창으로 가면 keyup이 이 창에 오지 않아 캐릭터가 계속 걷는다.
+    // 창이 포커스를 잃으면 네 방향을 모두 뗀 것으로 친다. moveStop은 지금 가는 방향과
+    // 같을 때만 멈추므로, 안 누르던 방향을 같이 보내도 해가 없다.
+    function handleBlur() {
+      for (const direction of ['up', 'down', 'left', 'right']) {
+        dispatch({ type: 'moveStop', direction })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('blur', handleBlur)
+
+    // 등록한 것은 같은 함수 참조로 뗀다. 안 떼면 화면을 나갔다 들어올 때마다 리스너가
+    // 쌓여서 한 번 누르면 여러 번 알려진다.
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('blur', handleBlur)
+    }
+  }, [])
 
   const nameOf = (monster) =>
     templates.monsters.find((t) => t.monsterTemplateId === monster.monsterTemplateId).name
