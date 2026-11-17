@@ -402,8 +402,35 @@ from community wikis and guides, not official documents.
   id), and if none has aggro there is no target. Idle monsters are never
   picked, so finishing one pack cannot wake the next.
 - **Order inside a tick:** the player moves, the monsters chase, the monsters
-  hit, then the player hits. A monster about to die still lands its last
-  hit, and a player killed that tick does not swing.
+  hit, a remembered skill fires, then the player's auto-attack swings. A
+  monster about to die still lands its last hit, and a player killed that tick
+  casts and swings nothing.
+
+### Skills, Rage and the GCD in code (2026-11-17)
+
+The first slice of the skill kit is Furious Thrust on key 1, with the Rage bar
+and the GCD. The rules are covered by tests (F1–F10 in `test-plan.md`); the
+skill bar and the Rage bar were checked by hand in the browser.
+
+- **A press in the last 3 ticks of the GCD is remembered.** It casts on the
+  tick the GCD ends, the latest press wins, and an earlier press is dropped.
+  Ticks are 0.1 seconds and the browser timer jitters, so without a window a
+  slightly early press would be thrown away and a one-second rotation would
+  feel stiff. WoW has the same idea in its spell queue window (0–400 ms,
+  from a community guide); no Fellowship source on the GCD or an input queue
+  was found. Three ticks, 0.3 seconds, is a placeholder to be felt out.
+- **A skill that cannot be used costs nothing.** With no target, or a target
+  beyond range 1, there is no damage, no Rage and no GCD. A remembered skill
+  that has become unusable when the GCD ends is dropped the same way.
+- **Furious Thrust hits for 80** before armor, with the same armor rule as the
+  auto-attack, and adds 1c. The number is fitted to the anchor: 80 per second
+  from the skill plus 20 from the auto-attack is the base DPS of 100, which
+  kills a 1000-health rat in 10 seconds, matching the swarm phase in Tier-1
+  numbers. It stays provisional until the spender and the area builder exist,
+  since the rotation mix will move it.
+- **Rage is whole units, capped at 5c, and does not decay.** The backlog has no
+  rule for Rage out of combat, so it does not fall for now, and with no spender
+  built it simply sits at 5c. Whether Rage should decay out of combat is open.
 
 ### Trash mechanics (2026-08-27)
 
@@ -495,8 +522,8 @@ pass:
 
 ### Tier-1 numbers (2026-09-15, damage 2026-09-26)
 
-None of this has been played. Combat code exists now (2026-11-17) but has no
-skills yet, so every value below is a starting point for the first real
+None of this has been played. Combat code exists now (2026-11-17) but has one
+skill so far, so every value below is a starting point for the first real
 fights. **What is meant to
 last is the method** — which number anchors the rest and what gets worked
 backwards from what. Values marked *provisional* were set to fill the
@@ -955,7 +982,9 @@ Non-blocking:
       2026-11-17, see "Aggro, chase and attacks"
 - [x] **Player auto-attack and click targeting** — built and tested
       2026-11-17, numbers provisional
-- [ ] Skills, Rage and the trash mechanics in code — not built
+- [ ] Skills, Rage and the trash mechanics in code — Furious Thrust, the Rage
+      bar and the GCD are built (2026-11-17); Overhead Slam, Brutal Swing,
+      Whirling Slash, the cooldowns, Sprint and the trash mechanics are not
 - [x] **Trash mechanics** — spin, pools, volley
 - [ ] Names for the thirteen talents (owner: Jihwan)
 - [ ] The two boss mechanics — parked until the trash is playable
