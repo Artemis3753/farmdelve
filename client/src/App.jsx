@@ -72,10 +72,10 @@ function App() {
     )
   }
 
-  // 던전은 아직 배치만 되어 있고, 플레이어 상태를 바꾸는 기능이 없다.
-  // 그래서 onPlayerChange를 넘기지 않는다.
+  // 던전은 몬스터 정의와 팩 구성(templates)만 읽고, 플레이어 상태를 바꾸는
+  // 기능은 아직 없다. 그래서 onPlayerChange를 넘기지 않는다.
   // 나중에 던전에서 장비를 잃거나 재료를 얻는 기능이 생기면 그때 추가하면 된다.
-  if (screen === 'dungeon') return <Dungeon onLeave={goHome} />
+  if (screen === 'dungeon') return <Dungeon templates={templates} onLeave={goHome} />
 
 
   // MainScreen은 눌린 문의 id를 그대로 넘겨준다. 그 id가 곧 화면 이름이라

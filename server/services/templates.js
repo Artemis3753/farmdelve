@@ -11,13 +11,13 @@ import pool from '../db/pool.js';
 import { TIME_SCALE } from '../config.js';
 
 export async function getTemplates() {
-  // 다섯 쿼리는 서로의 결과를 쓰지 않으므로 기다릴 이유가 없다. Promise.all이
+  // 일곱 쿼리는 서로의 결과를 쓰지 않으므로 기다릴 이유가 없다. Promise.all이
   // 전부 한꺼번에 띄우고 마지막 하나가 끝날 때 배열로 돌려준다.
   //
   // 읽기뿐이라 pool.connect()가 아니라 pool.query()를 쓴다. 세 쿼리가 서로 다른
   // 연결로 나가도 상관없다 — 트랜잭션이 아니기 때문이다. 강화 쪽이 연결을 직접
   // 빌렸던 건 BEGIN과 COMMIT이 같은 연결에 있어야 해서였다.
-  const [stacks, gear, upgrades, crops, recipes] = await Promise.all([
+  const [stacks, gear, upgrades, crops, recipes, monsters, packs] = await Promise.all([
     // 별칭에 큰따옴표가 없으면 PostgreSQL이 식별자를 소문자로 눕혀서
     // maxStack이 아니라 maxstack으로 나온다.
     pool.query(
@@ -81,6 +81,30 @@ export async function getTemplates() {
          FROM recipe
         ORDER BY recipe_id`,
     ),
+
+    // 몬스터 정의는 티어1 값 그대로 보낸다. 티어 배율 1.08^(tier-1)은 전투를 돌리는
+    // 클라이언트가 곱한다 — 여기서 곱하면 티어를 알아야 해서 "모두에게 같은 답"이
+    // 깨진다(2026-09-30).
+    //
+    // 공격 간격은 작물의 growthSeconds와 같은 이유로 초 단위 숫자로 편다.
+    pool.query(
+      `SELECT monster_template_id AS "monsterTemplateId", name, hp, armor,
+              auto_attack AS "autoAttack",
+              EXTRACT(EPOCH FROM auto_attack_interval)::float8 AS "autoAttackSeconds"
+         FROM monster_template
+        ORDER BY monster_template_id`,
+    ),
+
+    // 팩 구성은 표 모양 그대로 한 행씩 보낸다. 팩별로 묶는 일은 클라이언트가 한다 —
+    // 위의 다섯 목록도 전부 평평한 행이라, 이것만 중첩 객체로 보내면 규칙이 둘이 된다.
+    pool.query(
+      `SELECT dungeon_template_id AS "dungeonTemplateId",
+              pack_number AS "packNumber",
+              monster_template_id AS "monsterTemplateId",
+              amount
+         FROM monster_pack
+        ORDER BY dungeon_template_id, pack_number, monster_template_id`,
+    ),
   ]);
 
   return {
@@ -89,5 +113,7 @@ export async function getTemplates() {
     upgrades: upgrades.rows,
     crops: crops.rows,
     recipes: recipes.rows,
+    monsters: monsters.rows,
+    packs: packs.rows,
   };
 }
