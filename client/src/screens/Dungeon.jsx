@@ -22,6 +22,15 @@ const VIEW_WIDTH = 17
 
 const SKILL_SLOTS = [1, 2, 3, 4, 5, 6, 7]
 
+// 칸 번호 → 그 칸에 놓인 스킬. 지금은 1번 칸의 Furious Thrust 하나뿐이고 나머지는 비어 있다.
+// 칸에 마우스를 올리면 이름이 보이게 title로 쓴다.
+const SLOT_SKILLS = { 1: 'furiousThrust' }
+const SKILL_LABELS = { furiousThrust: 'Furious Thrust' }
+
+// 키 → 스킬 id. 방향 키와 같은 이유로 event.code(Digit1)를 쓴다. 키 재설정은 이 표를 바꾸는
+// 방식으로 붙일 수 있다(칸 번호와 키를 하나로 묶지 않은 까닭이다).
+const KEY_SKILLS = { Digit1: 'furiousThrust' }
+
 // 키 → 방향. 방향키와 WASD를 같이 받는다. event.key가 아니라 event.code("KeyW")를
 // 쓰는 것은, 한글 입력 상태에서는 W를 눌러도 event.key가 'ㅈ'이 되기 때문이다.
 // code는 키보드의 물리 위치라 입력 언어와 상관없다. 키 재설정은 전투 슬라이스에서
@@ -78,6 +87,16 @@ function DungeonRun({ templates, onLeave, onRetry }) {
   // 규칙서에 알리기만 한다. 실제로 걷는 것은 위의 틱이다.
   useEffect(() => {
     function handleKeyDown(event) {
+      // 스킬 키. 누를 때마다 "이 스킬을 쓰려 한다"고 알린다. 쓸 수 있는지, GCD가 끝났는지, 끝나기
+      // 직전이라 기억해 둘지는 규칙서가 정한다. 반복 입력은 걸러서, 키를 꾹 눌러도 한 번만 알린다.
+      const skill = KEY_SKILLS[event.code]
+      if (skill) {
+        event.preventDefault()
+        if (event.repeat) return
+        dispatch({ type: 'useSkill', skill })
+        return
+      }
+
       const direction = KEY_DIRECTIONS[event.code]
       if (!direction) return
 
@@ -221,15 +240,29 @@ function DungeonRun({ templates, onLeave, onRetry }) {
       <section>
         {/* 분노(Rage) 바. 다섯 칸으로 세는 자원이라 칸을 나눠 그린다. */}
         <div className="rage-bar">
+          {/* 분노는 정수 단위(1c = 10)라, 칸 i가 차려면 (i + 1)c 이상이어야 한다. */}
           {Array.from({ length: 5 }, (_, i) => (
-            <div key={i} className="rage-cell" />
+            <div
+              key={i}
+              className={state.rage >= (i + 1) * 10 ? 'rage-cell rage-cell-full' : 'rage-cell'}
+            />
           ))}
         </div>
 
         <ul className="slot-row">
-          {SKILL_SLOTS.map((n) => (
-            <li key={n} className="skill-key">{n}</li>
-          ))}
+          {SKILL_SLOTS.map((n) => {
+            // 스킬이 놓인 칸은 색을 입히고, GCD가 도는 동안은 어둡게 한다(다시 쓸 수 없다는 표시).
+            const skill = SLOT_SKILLS[n]
+            let className = 'skill-key'
+            if (skill) className += ' skill-key-bound'
+            if (skill && state.gcdReadyTick > state.tick) className += ' skill-key-gcd'
+
+            return (
+              <li key={n} className={className} title={skill ? SKILL_LABELS[skill] : undefined}>
+                {n}
+              </li>
+            )
+          })}
         </ul>
 
         <div className="placeholder">

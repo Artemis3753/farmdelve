@@ -422,6 +422,22 @@ button.plot:enabled:hover {
   border-radius: 3px;
 }
 
+/* 찬 분노 칸. 스펙: 분노는 붉은 바다. */
+.rage-cell-full {
+  background: #B4402F;
+  border-color: #B4402F;
+}
+
+/* 스킬이 놓인 칸과, GCD가 도는 동안 어두워진 칸. */
+.skill-key-bound {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.skill-key-gcd {
+  opacity: 0.4;
+}
+
 .skill-key {
   width: 44px;
   height: 44px;

@@ -20,6 +20,8 @@ const MONSTERS = [
   // 3번과 4번은 방어력 감소가 정수로 딱 떨어지지 않는 경우(반올림 확인용)이다.
   { monsterTemplateId: 3, hp: 80, armor: 100, autoAttack: 20, autoAttackSeconds: 2 },
   { monsterTemplateId: 4, hp: 80, armor: 300, autoAttack: 20, autoAttackSeconds: 2 },
+  // 5번은 스킬 피해의 반올림이 "내림과 올림 둘 다와 다른" 경우(53.33)이다.
+  { monsterTemplateId: 5, hp: 80, armor: 500, autoAttack: 20, autoAttackSeconds: 2 },
 ]
 
 // 몬스터가 없는 빈 복도. 이동 규칙만 볼 때 쓴다. 플레이어는 (0, 4)에서 시작한다.
@@ -138,6 +140,10 @@ describe('createInitialState — initial layout (seam A)', () => {
     // 대상은 아직 없고, 플레이어의 첫 공격 시각 0은 "처음부터 칠 수 있다"는 뜻이다.
     expect(state.targetId).toBeNull()
     expect(state.nextPlayerAttackTick).toBe(0)
+    // 분노는 비어 있고, GCD는 돌고 있지 않으며, 기억해 둔 스킬 입력은 없다.
+    expect(state.rage).toBe(0)
+    expect(state.gcdReadyTick).toBe(0)
+    expect(state.queuedSkill).toBeNull()
   })
 })
 
@@ -268,7 +274,12 @@ describe('combatReducer — movement (seam B)', () => {
       ...hunting,
       monsters: hunting.monsters.map((m) => ({ ...m, hp: 10 })),
     })
+    // 스킬 경로: hunting에서 바로 쓰는 경로(GCD 안 돎), GCD가 2틱 남아 입력을 기억해 두는 경로
+    // (queuing), 기억해 둔 스킬이 틱 5에 나가는 경로(queuedCast)도 지나게 한다.
+    const queuing = deepFreeze({ ...hunting, gcdReadyTick: 6 })
+    const queuedCast = deepFreeze({ ...hunting, gcdReadyTick: 5, queuedSkill: 'furiousThrust' })
     const actions = [
+      { type: 'useSkill', skill: 'furiousThrust' },
       { type: 'tick' },
       { type: 'moveStart', direction: 'left' },
       // 누르는 즉시 걷는 경로(walking)와 막히는 경로(blocked)를 각각 지나게 한다.
@@ -281,7 +292,10 @@ describe('combatReducer — movement (seam B)', () => {
       { type: 'somethingUnknown' },
     ]
 
-    const states = [walking, blocked, pulling, chasing, attacking, dying, defeated, hunting, killing]
+    const states = [
+      walking, blocked, pulling, chasing, attacking, dying, defeated, hunting, killing,
+      queuing, queuedCast,
+    ]
     for (const state of states) {
       const snapshot = structuredClone(state)
       for (const action of actions) {
@@ -678,5 +692,162 @@ describe('combatReducer — player auto-attack, targeting and kills (seam E)', (
     // 몬스터의 공격으로 이번 틱에 죽으면, 같은 틱의 플레이어 공격은 나가지 않는다.
     const dying = { ...huntingOne(100, 9, 4), playerHp: 10 }
     expect(runTicks(dying, 1).monsters[0].hp).toBe(100)
+  })
+})
+
+
+// 스킬, 분노, GCD. 규칙(spec-note + 백로그 + 2026-11-17 합의): Furious Thrust는 대상이 사거리
+// 1칸 안일 때 80 피해(방어력 적용, 반올림)를 주고 분노 1c를 만든다. 분노는 정수 단위(1c = 10)이고
+// 최대 5c(50)다. GCD는 10틱이고, 끝나기 3틱 안에 누른 입력은 기억했다가 끝나는 틱에 쓴다.
+// 쓸 수 없으면(대상 없음·사거리 밖) 아무 일도 없고 GCD도 안 쓴다. 자동공격은 GCD와 무관하다.
+//
+// 피해 80과 방어력 감소는 백로그 공식(armor / (armor + 1000))에서 손으로 뽑은 값이다.
+
+// 사거리 1칸 안의 몬스터(hp)를 대상으로 잡았고, 몬스터 공격과 플레이어 자동공격은 멀리(1000)
+// 미뤄 둔 상태. 스킬만 따로 볼 수 있게 한다. 플레이어는 (x, y).
+function skillReady(hp = 1000, x = 9, y = 4) {
+  const base = huntingOne(hp, x, y)
+  return {
+    ...base,
+    nextPlayerAttackTick: 1000,
+    monsters: base.monsters.map((m) => ({ ...m, aggro: true, nextAttackTick: 1000 })),
+  }
+}
+
+const castFurious = (state) => combatReducer(state, { type: 'useSkill', skill: 'furiousThrust' })
+
+describe('combatReducer — skills, Rage and the GCD (seam F)', () => {
+  test('F1: Furious Thrust hits the target at once for 80 and adds 1c of Rage', () => {
+    const after = castFurious(skillReady())
+
+    expect(after.monsters[0].hp).toBe(920)
+    expect(after.rage).toBe(10)
+  })
+
+  test('F2: with no target, or a target out of range, nothing happens', () => {
+    const noTarget = { ...skillReady(), targetId: null }
+    expect(castFurious(noTarget)).toEqual(noTarget)
+
+    // 몬스터는 (10, 4)인데 플레이어가 (5, 4)에 있다 — 5칸 밖.
+    const farAway = skillReady(1000, 5, 4)
+    expect(castFurious(farAway)).toEqual(farAway)
+  })
+
+  test('F3: during the GCD an early press does nothing; the cast works the tick the GCD ends', () => {
+    const first = castFurious(skillReady()) // 틱 0에 쓴다. GCD는 틱 10까지.
+
+    // 5틱 시점(5틱 남음)에 누르면 3틱 창 밖이라 버려진다 — 기억되었다면 틱 10에 나갔을 것이다.
+    const early = castFurious(runTicks(first, 5))
+    expect(runTicks(early, 5).monsters[0].hp).toBe(920)
+
+    // 정확히 틱 10에는 바로 쓴다.
+    expect(castFurious(runTicks(first, 10)).monsters[0].hp).toBe(840)
+  })
+
+  test('F4: a press in the last 3 ticks of the GCD is remembered; an earlier one is dropped', () => {
+    const first = castFurious(skillReady()) // GCD는 틱 10까지.
+
+    // 틱 7(3틱 남음)에 누르면 기억했다가 틱 10에 나간다. 틱 9까지는 안 나간다.
+    const queued = castFurious(runTicks(first, 7))
+    expect(runTicks(queued, 2).monsters[0].hp).toBe(920)
+    expect(runTicks(queued, 3).monsters[0].hp).toBe(840)
+
+    // 틱 6(4틱 남음)에 누르면 버려진다.
+    const tooEarly = castFurious(runTicks(first, 6))
+    expect(runTicks(tooEarly, 4).monsters[0].hp).toBe(920)
+
+    // 같은 키를 여러 번 눌러도 한 번만 나가고, 그 GCD 안에서 또 나가지는 않는다.
+    const mashed = castFurious(castFurious(castFurious(runTicks(first, 7))))
+    expect(runTicks(mashed, 13).monsters[0].hp).toBe(840)
+  })
+
+  test('F5: a remembered skill is dropped if it cannot be used when the GCD ends, and the GCD is not spent', () => {
+    const first = castFurious(skillReady())
+    const queued = castFurious(runTicks(first, 7))
+
+    // 기억해 둔 사이 대상이 사라졌다. 틱 10이 되어도 안 나가고 분노도 그대로다.
+    const dropped = runTicks({ ...queued, targetId: null }, 3)
+    expect(dropped.monsters[0].hp).toBe(920)
+    expect(dropped.rage).toBe(10)
+
+    // GCD를 쓰지 않았으므로 대상을 다시 잡고 바로 누르면 나간다(쓴 거였다면 틱 20까지 막힌다).
+    const recast = castFurious({ ...dropped, targetId: 0 })
+    expect(recast.monsters[0].hp).toBe(840)
+
+    // 버려진 입력이 남아 있다가 틱 20에 또 나가면 안 된다.
+    expect(runTicks(recast, 10).monsters[0].hp).toBe(840)
+  })
+
+  test('F6: armor cuts the damage and it is rounded — 250 gives 64, 100 gives 73, 500 gives 53', () => {
+    const damageTakenBy = (templateId) => {
+      const base = createInitialState(MONSTERS, [
+        { packNumber: 1, monsterTemplateId: templateId, amount: 1 },
+      ])
+      const state = {
+        ...base,
+        player: { x: 9, y: 4, facing: 'right' },
+        monsters: [{ ...base.monsters[0], hp: 1000, aggro: true, nextAttackTick: 1000 }],
+        targetId: 0,
+        nextPlayerAttackTick: 1000,
+      }
+      return 1000 - castFurious(state).monsters[0].hp
+    }
+
+    // 80 × (1 − armor / (armor + 1000))를 손으로 계산한 값이다.
+    expect(damageTakenBy(1)).toBe(80) // 방어력 0
+    expect(damageTakenBy(2)).toBe(64) // 250: 정확히 64
+    expect(damageTakenBy(3)).toBe(73) // 100: 72.73 → 반올림 73 (내림이면 72)
+    expect(damageTakenBy(5)).toBe(53) // 500: 53.33 → 반올림 53 (올림이면 54)
+  })
+
+  test('F7: Rage stops at 5c', () => {
+    let state = skillReady()
+    for (let i = 0; i < 6; i++) {
+      state = runTicks(castFurious(state), 10) // 한 번 쓰고 GCD가 끝날 때까지 기다린다.
+      if (i === 4) expect(state.rage).toBe(50)
+    }
+
+    expect(state.rage).toBe(50)
+  })
+
+  test('F8: a kill by skill removes the monster and moves the target on', () => {
+    const state = huntWith([
+      { x: 6, y: 4, hp: 80, aggro: true },
+      { x: 9, y: 4, hp: 100, aggro: true },
+    ])
+
+    const after = castFurious(state)
+
+    expect(after.monsters).toHaveLength(1)
+    expect(after.targetId).toBe(1)
+  })
+
+  test('F9: a defeated player cannot use skills', () => {
+    const dead = { ...skillReady(), defeated: true, playerHp: 0 }
+
+    expect(castFurious(dead)).toBe(dead)
+
+    // 기억해 둔 스킬이 나가는 틱에 몬스터에게 죽으면(몬스터가 먼저 때린다) 그 스킬도 안 나간다.
+    const base = skillReady()
+    const dying = {
+      ...base,
+      playerHp: 10,
+      gcdReadyTick: 1,
+      queuedSkill: 'furiousThrust',
+      monsters: base.monsters.map((m) => ({ ...m, nextAttackTick: 0 })),
+    }
+    const after = runTicks(dying, 1)
+    expect(after.defeated).toBe(true)
+    expect(after.monsters[0].hp).toBe(1000)
+  })
+
+  test('F10: the auto-attack keeps swinging during the GCD', () => {
+    // 자동공격을 켠 상태(타이머 0). 스킬을 쓰면 920, 1틱 뒤 자동공격이 40을 더 깎는다.
+    const state = { ...skillReady(), nextPlayerAttackTick: 0 }
+    const cast = castFurious(state)
+
+    expect(runTicks(cast, 1).monsters[0].hp).toBe(880)
+    // 틱 21의 두 번째 자동공격까지: 스킬 80 + 자동공격 40 × 2 = 160.
+    expect(runTicks(cast, 21).monsters[0].hp).toBe(840)
   })
 })

@@ -51,6 +51,24 @@ const PLAYER_ATTACK_TICKS = 2 * TICKS_PER_SECOND;
 // 닿지 않는다.
 const ARMOR_K = 1000;
 
+// 분노(Rage)는 정수 단위로 센다: 1c = 10 단위, 최대 5c = 50 단위(spec-note). 0.5c를 만드는
+// 스킬(Brutal Swing)이 나중에 와도 소수가 필요 없게 하려는 것이다.
+const RAGE_MAX = 50;
+
+// 전체 쿨다운(GCD) 1초 고정(백로그 Tier-1 numbers). 자동공격과 소모품은 GCD를 쓰지 않는다.
+const GCD_TICKS = TICKS_PER_SECOND;
+
+// GCD가 끝나기 이 틱 수 안에 누른 스킬 키는 기억해 두었다가 끝나는 틱에 쓴다(2026-11-17).
+// WoW의 스펠 큐 창(0~400ms, 커뮤니티 자료)과 같은 발상이다. 틱이 0.1초이고 브라우저 타이머도
+// 조금 흔들려서, 아주 조금 일찍 누른 입력이 버려지면 1초 주기 로테이션의 조작감이 둔해진다.
+const QUEUE_WINDOW_TICKS = 3;
+
+// 스킬 표. 피해는 방어력 적용 전의 값이고, rageGain은 분노 단위다(10 = 1c). 숫자는 잠정이다:
+// 1초에 한 번 쓰면 80 + 자동공격 20 = 백로그의 기준 DPS 100이 되도록 맞췄다.
+const SKILLS = {
+  furiousThrust: { damage: 80, rageGain: 10 },
+};
+
 // 방향은 문자열로 들고, 움직일 때만 이 표에서 칸 차이를 찾는다. 상태에 객체를
 // 넣으면 { dx: 1, dy: 0 } === { dx: 1, dy: 0 }이 false라 "오른쪽을 보고 있나"를
 // ===로 물을 수 없다. y는 아래로 갈수록 커진다 — 화면 좌표와 같은 방향이다.
@@ -130,6 +148,10 @@ export function createInitialState(monsters, packs) {
     targetId: null,
     // 플레이어의 다음 공격 시각. 0은 "처음부터 칠 수 있다"는 뜻이다.
     nextPlayerAttackTick: 0,
+    // 분노(정수 단위, 0~50), GCD가 끝나는 틱(0 = 돌고 있지 않음), GCD 중에 기억해 둔 스킬(없으면 null).
+    rage: 0,
+    gcdReadyTick: 0,
+    queuedSkill: null,
     // 복도 왼쪽 끝, 세로 가운데에서 출발한다. 1번 팩(x = 10)까지 어그로 반경
     // 5칸을 빼면 다섯 칸을 걸어야 첫 싸움이 붙는다.
     player: { x: 0, y: Math.floor(CORRIDOR_HEIGHT / 2), facing: 'right' },
@@ -295,11 +317,35 @@ function nearestAggroedId(monsters, player) {
 }
 
 
+// 대상에게 피해를 준다(자동공격과 스킬이 같이 쓴다). 방어력만큼 줄이고 정수로 반올림한다 —
+// 백로그: 피해는 십 단위라 소수가 남으면 안 된다. hp가 0 이하면 몬스터를 지우고, 어그로 붙은
+// 가장 가까운 몬스터를 새 대상으로 잡는다(없으면 대상 없음).
+function hitTarget(state, target, rawDamage) {
+  const damage = Math.round(rawDamage * (1 - target.armor / (target.armor + ARMOR_K)));
+  const hp = target.hp - damage;
+
+  if (hp > 0) {
+    return {
+      ...state,
+      monsters: state.monsters.map((m) => (m.id === target.id ? { ...m, hp } : m)),
+    };
+  }
+
+  const monsters = state.monsters.filter((m) => m.id !== target.id);
+  return {
+    ...state,
+    monsters,
+    targetId: nearestAggroedId(monsters, state.player),
+  };
+}
+
+
 // 플레이어의 자동공격: 대상이 사거리 1칸 안이고 공격 시각이 되면 한 대 때린다.
 //
 // 타이머(nextPlayerAttackTick)는 몬스터와 같이 사거리와 상관없이 흐른다. 대상이 없거나
-// 사거리 밖이면 칠 수 없을 뿐이고, 사거리에 들어오면 이어서 친다. 몬스터 공격이 먼저 처리된
-// 뒤에 오므로(advanceCombat), 이번 틱에 몬스터에게 죽은 플레이어는 치지 못한다.
+// 사거리 밖이면 칠 수 없을 뿐이고, 사거리에 들어오면 이어서 친다. GCD와는 상관이 없다 —
+// 자동공격은 버튼도 GCD도 쓰지 않고 "그냥 돈다"(spec-note). 몬스터 공격이 먼저 처리된 뒤에
+// 오므로(advanceCombat), 이번 틱에 몬스터에게 죽은 플레이어는 치지 못한다.
 function playerAttackStep(state) {
   if (state.defeated) return state;
 
@@ -308,34 +354,39 @@ function playerAttackStep(state) {
   if (distanceBetween(target, state.player) > MELEE_RANGE) return state;
   if (state.tick < state.nextPlayerAttackTick) return state;
 
-  // 방어력만큼 줄이고 정수로 반올림한다. 백로그: 피해는 십 단위라 소수가 남으면 안 된다.
-  const damage = Math.round(
-    PLAYER_ATTACK_POWER * AUTO_ATTACK_COEFFICIENT * (1 - target.armor / (target.armor + ARMOR_K)),
-  );
-  const hp = target.hp - damage;
-  const nextPlayerAttackTick = state.tick + PLAYER_ATTACK_TICKS;
-
-  if (hp > 0) {
-    return {
-      ...state,
-      nextPlayerAttackTick,
-      monsters: state.monsters.map((m) => (m.id === target.id ? { ...m, hp } : m)),
-    };
-  }
-
-  // 죽었다: 몬스터를 지우고, 어그로 붙은 가장 가까운 몬스터를 새 대상으로 잡는다.
-  const monsters = state.monsters.filter((m) => m.id !== target.id);
   return {
-    ...state,
-    nextPlayerAttackTick,
-    monsters,
-    targetId: nearestAggroedId(monsters, state.player),
+    ...hitTarget(state, target, PLAYER_ATTACK_POWER * AUTO_ATTACK_COEFFICIENT),
+    nextPlayerAttackTick: state.tick + PLAYER_ATTACK_TICKS,
   };
 }
 
 
+// 스킬을 쓴다. 대상이 있고 사거리 1칸 안일 때만 나가고, 못 나가면 상태를 그대로 돌려준다 —
+// 피해도 분노도 GCD도 쓰지 않는다. 나가면 피해를 주고, 분노를 쌓고(최대 5c), GCD를 시작한다.
+function castSkill(state, skillId) {
+  const skill = SKILLS[skillId];
+  const target = state.monsters.find((m) => m.id === state.targetId);
+  if (!skill || !target) return state;
+  if (distanceBetween(target, state.player) > MELEE_RANGE) return state;
+
+  return {
+    ...hitTarget(state, target, skill.damage),
+    rage: Math.min(RAGE_MAX, state.rage + skill.rageGain),
+    gcdReadyTick: state.tick + GCD_TICKS,
+  };
+}
+
+
+// GCD 중에 기억해 둔 스킬을 GCD가 끝나는 틱에 쓴다. 그 순간 쓸 수 없으면(대상이 사라졌거나
+// 사거리 밖) 조용히 버리고 GCD도 쓰지 않는다. 몬스터에게 죽은 플레이어는 쓰지 못한다.
+function queuedSkillStep(state) {
+  if (state.defeated || !state.queuedSkill || state.tick < state.gcdReadyTick) return state;
+  return castSkill({ ...state, queuedSkill: null }, state.queuedSkill);
+}
+
+
 // 시간이 한 틱 흐른 뒤 전투 쪽에서 일어나는 일: 어그로를 붙이고, 5틱 박자에는 걷고,
-// 몬스터가 때리고, 마지막에 플레이어가 때린다(이 순서).
+// 몬스터가 때리고, 기억해 둔 스킬이 나가고, 마지막에 플레이어의 자동공격이 나간다(이 순서).
 //
 // 추격 몬스터는 전원이 틱 5의 배수에 함께 움직인다(2026-11-17). 몬스터마다 타이머를
 // 두지 않아 상태 필드가 늘지 않는다. 대신 어그로가 붙은 뒤 첫 걸음까지 최대 0.5초가 걸린다.
@@ -344,7 +395,7 @@ function playerAttackStep(state) {
 function advanceCombat(state) {
   const pulled = pullPacks(state);
   const chased = pulled.tick % MOVE_TICKS === 0 ? chaseStep(pulled) : pulled;
-  return playerAttackStep(attackStep(chased));
+  return playerAttackStep(queuedSkillStep(attackStep(chased)));
 }
 
 
@@ -371,6 +422,16 @@ export function combatReducer(state, action) {
     case 'selectTarget':
       if (!state.monsters.some((m) => m.id === action.monsterId)) return state;
       return { ...state, targetId: state.targetId === action.monsterId ? null : action.monsterId };
+
+    // 스킬 키. GCD가 끝나 있으면 바로 쓰고, 끝나기 QUEUE_WINDOW_TICKS 안이면 기억해 두었다가
+    // 끝나는 틱에 쓴다(마지막에 누른 것이 이긴다). 그보다 일찍 누른 입력은 버린다. 모르는 스킬 id는
+    // castSkill이 걸러서 아무 일도 없다.
+    case 'useSkill': {
+      const ticksLeft = state.gcdReadyTick - state.tick;
+      if (ticksLeft <= 0) return castSkill(state, action.skill);
+      if (ticksLeft <= QUEUE_WINDOW_TICKS) return { ...state, queuedSkill: action.skill };
+      return state;
+    }
 
     // 뗀 키가 지금 가는 방향일 때만 멈춘다. 오른쪽 → 위를 누르고 오른쪽을 먼저
     // 떼는 경우, 무조건 null로 만들면 아직 누르고 있는 위까지 멈춰버린다.
