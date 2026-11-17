@@ -66,9 +66,37 @@ export const QUEUE_WINDOW_TICKS = 3;
 
 // 스킬 표. 피해는 방어력 적용 전의 값이고, rageGain은 분노 단위다(10 = 1c). 숫자는 잠정이다:
 // 1초에 한 번 쓰면 80 + 자동공격 20 = 백로그의 기준 DPS 100이 되도록 맞췄다.
+//
+// 스펜더(spender)는 표에 피해를 적지 않는다. 가진 분노의 정수 포인트를 전부 쓰고, 피해는
+// spenderDamage가 쓴 포인트 수로 계산한다.
+//
+// 광역 빌더(area)는 한 명당 피해와 분노(rageGain)를 적는다. 대상 수에 비례해 쌓이는 값이다.
 const SKILLS = {
   furiousThrust: { damage: 80, rageGain: 10 },
+  overheadSlam: { spender: true },
+  brutalSwing: { area: true, damage: 40, rageGain: 5 },
 };
+
+// Brutal Swing의 범위(백로그 Skill shapes in tiles): 바라보는 방향으로 폭 3칸(좌우 1칸씩) × 앞 2줄.
+// 여섯 칸이라서 5명 상한이 의미를 갖는다. 한 명당 피해 40은 Furious Thrust(80)의 절반이다:
+// 백로그의 "AoE 효율 0.5"로, 2명을 맞히면 단일 빌더와 같아진다(분노 0.5c × 2 = 1c도 같은 지점).
+const SWING_ROWS = 2;
+const SWING_HALF_WIDTH = 1;
+const SWING_MAX_TARGETS = 5;
+
+export const RAGE_PER_POINT = 10;
+
+// Overhead Slam의 피해 곡선(2026-11-17 합의): 200 × n^0.6, n = 쓴 포인트, 반올림. 포인트를
+// 하나 더 모을 때마다 늘어나는 양이 줄어드는 오목 곡선이다. 사이클 하나는 Furious Thrust n번과
+// 스펜더 1번이라 GCD가 n + 1개 드는데, 그 GCD당 평균 피해가 3c(157)에서 가장 높고 5c(154)는
+// 조금 낮다. 스펙의 "5c까지 모으는 것이 항상 정답이면 안 된다"를 맞추려는 모양이다. 숫자는
+// 잠정이고, 5c 보상 탈렌트(티어 3a, 5a)가 이 차이를 뒤집을지는 아직 열려 있다.
+const SPENDER_BASE_DAMAGE = 200;
+const SPENDER_CURVE_EXPONENT = 0.6;
+
+function spenderDamage(points) {
+  return Math.round(SPENDER_BASE_DAMAGE * Math.pow(points, SPENDER_CURVE_EXPONENT));
+}
 
 // 방향은 문자열로 들고, 움직일 때만 이 표에서 칸 차이를 찾는다. 상태에 객체를
 // 넣으면 { dx: 1, dy: 0 } === { dx: 1, dy: 0 }이 false라 "오른쪽을 보고 있나"를
@@ -322,22 +350,30 @@ function nearestAggroedId(monsters, player) {
 // 백로그: 피해는 십 단위라 소수가 남으면 안 된다. hp가 0 이하면 몬스터를 지우고, 어그로 붙은
 // 가장 가까운 몬스터를 새 대상으로 잡는다(없으면 대상 없음).
 function hitTarget(state, target, rawDamage) {
-  const damage = Math.round(rawDamage * (1 - target.armor / (target.armor + ARMOR_K)));
-  const hp = target.hp - damage;
+  return retargetIfLost(damageMonster(state, target, rawDamage));
+}
 
-  if (hp > 0) {
-    return {
-      ...state,
-      monsters: state.monsters.map((m) => (m.id === target.id ? { ...m, hp } : m)),
-    };
-  }
+// 몬스터 하나에게 피해를 준다: 방어력만큼 줄여 반올림하고, hp가 0 이하면 지운다. 대상은 건드리지
+// 않는다 — 여러 명을 맞히는 스킬은 다 맞힌 뒤에 한 번만 대상을 정리한다(retargetIfLost).
+function damageMonster(state, monster, rawDamage) {
+  const damage = Math.round(rawDamage * (1 - monster.armor / (monster.armor + ARMOR_K)));
+  const hp = monster.hp - damage;
 
-  const monsters = state.monsters.filter((m) => m.id !== target.id);
   return {
     ...state,
-    monsters,
-    targetId: nearestAggroedId(monsters, state.player),
+    monsters:
+      hp > 0
+        ? state.monsters.map((m) => (m.id === monster.id ? { ...m, hp } : m))
+        : state.monsters.filter((m) => m.id !== monster.id),
   };
+}
+
+// 대상이 죽어서 사라졌으면 어그로 붙은 가장 가까운 몬스터를 새 대상으로 잡는다(없으면 대상 없음).
+// 대상이 원래 없었거나 살아 있으면 그대로 둔다: 대상 없이 휘두른 스킬이 누군가를 죽여도 선택이
+// 생기지는 않는다.
+function retargetIfLost(state) {
+  if (state.targetId === null || state.monsters.some((m) => m.id === state.targetId)) return state;
+  return { ...state, targetId: nearestAggroedId(state.monsters, state.player) };
 }
 
 
@@ -363,16 +399,74 @@ function playerAttackStep(state) {
 
 
 // 스킬을 쓴다. 대상이 있고 사거리 1칸 안일 때만 나가고, 못 나가면 상태를 그대로 돌려준다 —
-// 피해도 분노도 GCD도 쓰지 않는다. 나가면 피해를 주고, 분노를 쌓고(최대 5c), GCD를 시작한다.
+// 피해도 분노도 GCD도 쓰지 않는다. 나가면 피해를 주고, 분노를 쌓거나(빌더, 최대 5c) 쓰고
+// (스펜더), GCD를 시작한다. 스펜더는 1c도 없으면 못 쓴다. 0.5c가 남아 있어도 정수 포인트만
+// 쓰고 나머지는 남긴다(백로그: 남은 반 포인트는 다음 빌더가 채운다).
 function castSkill(state, skillId) {
   const skill = SKILLS[skillId];
+  if (!skill) return state;
+  if (skill.area) return castAreaSkill(state, skill);
+
   const target = state.monsters.find((m) => m.id === state.targetId);
-  if (!skill || !target) return state;
+  if (!target) return state;
   if (distanceBetween(target, state.player) > MELEE_RANGE) return state;
 
+  const points = Math.floor(state.rage / RAGE_PER_POINT);
+  if (skill.spender && points < 1) return state;
+
+  const rawDamage = skill.spender ? spenderDamage(points) : skill.damage;
+  const rage = skill.spender
+    ? state.rage - points * RAGE_PER_POINT
+    : Math.min(RAGE_MAX, state.rage + skill.rageGain);
+
   return {
-    ...hitTarget(state, target, skill.damage),
-    rage: Math.min(RAGE_MAX, state.rage + skill.rageGain),
+    ...hitTarget(state, target, rawDamage),
+    rage,
+    gcdReadyTick: state.tick + GCD_TICKS,
+  };
+}
+
+
+// 칸 (x, y)가 플레이어의 Brutal Swing 범위(바라보는 방향의 6칸) 안인가. 앞 방향 벡터(fwd)로 "앞으로
+// 몇 칸"(depth)과 "옆으로 몇 칸"(side)을 구한다: 방향이 위·아래·좌·우 어느 쪽이든 같은 식이다.
+// 화면이 범위를 칠할 때도 이 함수를 써서, 그려진 칸과 실제로 맞는 칸이 어긋나지 않게 한다.
+export function inSwingArea(player, x, y) {
+  const fwd = DIRECTIONS[player.facing];
+  const rx = x - player.x;
+  const ry = y - player.y;
+  const depth = rx * fwd.dx + ry * fwd.dy;
+  const side = Math.abs(rx * fwd.dy - ry * fwd.dx);
+  return depth >= 1 && depth <= SWING_ROWS && side <= SWING_HALF_WIDTH;
+}
+
+
+// 범위 안에 있는 몬스터 중 맞힐 최대 5명. 5명을 넘으면 선택한
+// 대상을 먼저(범위 안일 때), 다음은 플레이어에게 가까운 순이다. 거리가 같으면 id가 낮은 쪽이 먼저인데,
+// 몬스터 배열이 항상 id 순이고 sort가 동률의 순서를 바꾸지 않아서 따로 id를 비교할 필요가 없다.
+function swingTargets(state) {
+  const inArea = state.monsters.filter((m) => inSwingArea(state.player, m.x, m.y));
+
+  const isTarget = (m) => (m.id === state.targetId ? 0 : 1);
+  inArea.sort(
+    (a, b) =>
+      isTarget(a) - isTarget(b) ||
+      distanceBetween(a, state.player) - distanceBetween(b, state.player),
+  );
+  return inArea.slice(0, SWING_MAX_TARGETS);
+}
+
+
+// 광역 스킬을 쓴다. 대상 선택도 사거리 검사도 없다(범위가 곧 사거리): 아무도 못 맞혀도 발동하고
+// GCD를 쓴다(헛스윙). 맞힌 한 명마다 분노를 쌓는다. 죽인 몬스터도 맞힌 수에 센다.
+function castAreaSkill(state, skill) {
+  const hit = swingTargets(state);
+
+  let next = state;
+  for (const monster of hit) next = damageMonster(next, monster, skill.damage);
+
+  return {
+    ...retargetIfLost(next),
+    rage: Math.min(RAGE_MAX, state.rage + hit.length * skill.rageGain),
     gcdReadyTick: state.tick + GCD_TICKS,
   };
 }

@@ -850,4 +850,326 @@ describe('combatReducer — skills, Rage and the GCD (seam F)', () => {
     // 틱 21의 두 번째 자동공격까지: 스킬 80 + 자동공격 40 × 2 = 160.
     expect(runTicks(cast, 21).monsters[0].hp).toBe(840)
   })
+
+  // Overhead Slam(2026-11-17 합의). 단일 대상 스펜더: 가진 분노를 정수 포인트만큼 전부 쓰고
+  // 피해는 200 × n^0.6(n = 쓴 포인트, 반올림)이다. 곡선이 오목해서 사이클당 GCD 하나의 평균
+  // 피해는 3c 부근이 가장 높다. 사거리 1칸과 GCD·큐 규칙은 Furious Thrust와 같다.
+  //
+  // 기댓값은 공식이 아니라 손으로 뽑은 표(1c 200, 2c 303, 3c 387, 4c 459, 5c 525)에서 가져온다.
+  const castSlam = (state) => combatReducer(state, { type: 'useSkill', skill: 'overheadSlam' })
+  const withRage = (state, rage) => ({ ...state, rage })
+
+  test('F11: Overhead Slam spends all whole points; damage is 200, 303, 387, 459, 525 for 1c to 5c', () => {
+    // 표의 값: 200 × n^0.6 = 200, 303.15, 386.9, 459.4, 525.3 → 반올림.
+    const table = [
+      { rage: 10, damage: 200 },
+      { rage: 20, damage: 303 },
+      { rage: 30, damage: 387 }, // 386.9 — 내림이면 386
+      { rage: 40, damage: 459 }, // 459.4 — 올림이면 460
+      { rage: 50, damage: 525 }, // 525.3 — 올림이면 526
+    ]
+
+    for (const { rage, damage } of table) {
+      const after = castSlam(withRage(skillReady(), rage))
+      expect(after.monsters[0].hp).toBe(1000 - damage)
+      expect(after.rage).toBe(0)
+    }
+
+    // GCD도 쓴다: 바로 Furious Thrust를 눌러도(10틱 남음, 큐 창 밖) 버려지고, 10틱 뒤에야 나간다.
+    const slammed = castSlam(withRage(skillReady(), 50))
+    const early = castFurious(slammed)
+    expect(early.monsters[0].hp).toBe(475)
+    expect(castFurious(runTicks(slammed, 10)).monsters[0].hp).toBe(395)
+  })
+
+  test('F12: half a point is left behind — 2.5c spends 2c and keeps 0.5c', () => {
+    const after = castSlam(withRage(skillReady(), 25))
+
+    expect(after.monsters[0].hp).toBe(1000 - 303)
+    expect(after.rage).toBe(5)
+  })
+
+  test('F13: with less than 1c nothing happens and the GCD is not spent', () => {
+    const empty = withRage(skillReady(), 0)
+    expect(castSlam(empty)).toEqual(empty)
+
+    const half = withRage(skillReady(), 5)
+    expect(castSlam(half)).toEqual(half)
+
+    // GCD를 안 썼으므로 바로 Furious Thrust가 나간다.
+    expect(castFurious(castSlam(half)).monsters[0].hp).toBe(920)
+  })
+
+  test('F14: with no target, or a target out of range, nothing happens and the Rage is kept', () => {
+    const noTarget = withRage({ ...skillReady(), targetId: null }, 50)
+    expect(castSlam(noTarget)).toEqual(noTarget)
+
+    const farAway = withRage(skillReady(1000, 5, 4), 50)
+    expect(castSlam(farAway)).toEqual(farAway)
+  })
+
+  test('F15: armor cuts the damage and it is rounded — 3c vs 250 gives 310, 1c vs 100 gives 182, 2c vs 300 gives 233', () => {
+    const damageTakenBy = (templateId, rage) => {
+      const base = createInitialState(MONSTERS, [
+        { packNumber: 1, monsterTemplateId: templateId, amount: 1 },
+      ])
+      const state = {
+        ...base,
+        player: { x: 9, y: 4, facing: 'right' },
+        monsters: [{ ...base.monsters[0], hp: 1000, aggro: true, nextAttackTick: 1000 }],
+        targetId: 0,
+        nextPlayerAttackTick: 1000,
+        rage,
+      }
+      return 1000 - castSlam(state).monsters[0].hp
+    }
+
+    // 곡선 값 × (1 − armor / (armor + 1000))를 손으로 계산한 값이다.
+    expect(damageTakenBy(2, 30)).toBe(310) // 387 × 0.8 = 309.6 → 반올림 310 (내림이면 309)
+    expect(damageTakenBy(3, 10)).toBe(182) // 200 × 1000/1100 = 181.82 → 182 (내림이면 181)
+    expect(damageTakenBy(4, 20)).toBe(233) // 303 × 1000/1300 = 233.08 → 233 (올림이면 234)
+  })
+
+  test('F16: the key is remembered in the last 3 ticks of the GCD and spends the Rage held when it fires', () => {
+    // Furious Thrust로 분노가 40에서 50이 되고 GCD는 틱 10까지다.
+    const first = castFurious(withRage(skillReady(), 40))
+    expect(first.rage).toBe(50)
+
+    // 틱 7에 눌러 기억하면 틱 10에 나간다. 틱 9까지는 안 나간다.
+    const queued = castSlam(runTicks(first, 7))
+    expect(runTicks(queued, 2).monsters[0].hp).toBe(920)
+    const fired = runTicks(queued, 3)
+    expect(fired.monsters[0].hp).toBe(920 - 525)
+    expect(fired.rage).toBe(0)
+
+    // 기억해 둔 사이 분노가 줄었다면 누른 때가 아니라 나가는 때의 분노로 쓴다: 3c → 387.
+    expect(runTicks({ ...queued, rage: 30 }, 3).monsters[0].hp).toBe(920 - 387)
+
+    // 나갈 때 1c도 없으면 버려지고 분노는 그대로다.
+    const dropped = runTicks({ ...queued, rage: 5 }, 3)
+    expect(dropped.monsters[0].hp).toBe(920)
+    expect(dropped.rage).toBe(5)
+
+    // 4틱 이상 남았을 때 누른 입력은 버려진다.
+    const tooEarly = castSlam(runTicks(first, 6))
+    expect(runTicks(tooEarly, 4).monsters[0].hp).toBe(920)
+  })
+
+  test('F17: a kill by Overhead Slam removes the monster, spends the Rage and moves the target on', () => {
+    const state = withRage(
+      huntWith([
+        { x: 6, y: 4, hp: 300, aggro: true },
+        { x: 9, y: 4, hp: 100, aggro: true },
+      ]),
+      30,
+    )
+
+    const after = castSlam(state)
+
+    expect(after.monsters).toHaveLength(1)
+    expect(after.targetId).toBe(1)
+    expect(after.rage).toBe(0)
+  })
+
+  test('F18: the auto-attack keeps swinging after Overhead Slam', () => {
+    // 자동공격을 켠 상태(타이머 0). 5c 스펜더 525, 1틱 뒤 자동공격 40.
+    const state = withRage({ ...skillReady(), nextPlayerAttackTick: 0 }, 50)
+    const cast = castSlam(state)
+
+    expect(runTicks(cast, 1).monsters[0].hp).toBe(1000 - 525 - 40)
+    // 틱 21의 두 번째 자동공격까지: 스펜더 525 + 자동공격 40 × 2.
+    expect(runTicks(cast, 21).monsters[0].hp).toBe(1000 - 525 - 80)
+  })
+
+  // Brutal Swing(2026-11-17 합의). 광역 빌더: 바라보는 방향으로 폭 3칸 × 앞 2줄(6칸)의 모든 적을
+  // 최대 5명까지 때리고, 맞힌 한 명마다 분노 0.5c(5 단위)를 만든다. 한 명당 피해는 Furious Thrust의
+  // 절반인 40(백로그: AoE 효율 0.5, 2명부터 이득)이고 방어력을 적용한다. 대상 선택은 필요 없고,
+  // 범위가 비어도 발동해서 GCD를 쓴다(헛스윙). 6칸이 다 차 5명을 넘으면 선택한 대상(범위 안일 때)을
+  // 먼저 넣고 나머지는 플레이어에게 가까운 순, 같으면 id가 낮은 순이다.
+  //
+  // 플레이어는 (5, 4)에 서서 오른쪽을 본다: 범위는 x 6~7, y 3~5의 여섯 칸이다.
+  const castSwing = (state) => combatReducer(state, { type: 'useSkill', skill: 'brutalSwing' })
+
+  // specs의 몬스터를 놓고 플레이어는 (5, 4)에서 facing을 본다. 대상은 targetId(기본 없음).
+  // 몬스터 공격과 플레이어 자동공격은 멀리(1000) 미뤄 둔다. 몬스터는 모두 어그로 상태, hp 1000.
+  function swingWith(specs, { facing = 'right', targetId = null } = {}) {
+    // 한 팩은 최대 4마리라서 4마리씩 팩을 나눠 만든다. 팩 번호는 어그로를 직접 켜 두므로 상관없고,
+    // id는 specs 순서(0부터)다.
+    const packs = []
+    for (let i = 0; i < specs.length; i += 4) {
+      packs.push({
+        packNumber: i / 4 + 1,
+        monsterTemplateId: 1,
+        amount: Math.min(4, specs.length - i),
+      })
+    }
+    const base = createInitialState(MONSTERS, packs)
+    return {
+      ...base,
+      player: { x: 5, y: 4, facing },
+      targetId,
+      nextPlayerAttackTick: 1000,
+      monsters: base.monsters.map((m, i) => ({
+        ...m,
+        hp: 1000,
+        aggro: true,
+        nextAttackTick: 1000,
+        ...specs[i],
+      })),
+    }
+  }
+  const SWING_AREA = [
+    [6, 3], [6, 4], [6, 5],
+    [7, 3], [7, 4], [7, 5],
+  ]
+
+  test('F19: Brutal Swing hits the six tiles three wide and two rows ahead, and nothing else', () => {
+    // 안쪽 3마리 + 바깥 5마리: 3칸 앞, 옆으로 2칸 두 곳, 바로 뒤, 플레이어 바로 옆(앞이 아니라 옆).
+    const state = swingWith([
+      { x: 6, y: 4 }, { x: 7, y: 3 }, { x: 7, y: 5 },
+      { x: 8, y: 4 }, { x: 6, y: 2 }, { x: 6, y: 6 }, { x: 4, y: 4 }, { x: 5, y: 3 },
+    ])
+
+    const after = castSwing(state)
+
+    expect(after.monsters.map((m) => m.hp)).toEqual([960, 960, 960, 1000, 1000, 1000, 1000, 1000])
+    expect(after.rage).toBe(15)
+  })
+
+  test('F20: the area turns with the player — up, down and left each hit their own corner and miss the next tile', () => {
+    // 각 방향마다 앞 2줄 × 폭 3의 구석 한 칸(맞음)과 그 바로 옆 바깥 한 칸(안 맞음)을 놓는다.
+    const cases = [
+      { facing: 'up', inside: { x: 6, y: 2 }, outside: { x: 7, y: 3 } }, // 옆 +1·앞 2 / 옆 +2
+      { facing: 'down', inside: { x: 4, y: 6 }, outside: { x: 3, y: 5 } },
+      { facing: 'left', inside: { x: 3, y: 3 }, outside: { x: 2, y: 4 } }, // 앞 2·옆 -1 / 앞 3
+    ]
+
+    for (const { facing, inside, outside } of cases) {
+      const after = castSwing(swingWith([inside, outside], { facing }))
+      expect(after.monsters.map((m) => m.hp)).toEqual([960, 1000])
+    }
+  })
+
+  test('F21: each enemy hit makes 0.5c of Rage, and Rage stops at 5c', () => {
+    const rageAfter = (hits, rage = 0) => {
+      const specs = SWING_AREA.slice(0, hits).map(([x, y]) => ({ x, y }))
+      return castSwing({ ...swingWith(specs), rage }).rage
+    }
+
+    expect(rageAfter(1)).toBe(5)
+    expect(rageAfter(2)).toBe(10)
+    expect(rageAfter(5)).toBe(25)
+    expect(rageAfter(2, 45)).toBe(50) // 45 + 10 = 55 → 50
+  })
+
+  test('F22: armor cuts each hit and it is rounded — 250 gives 32, 100 gives 36, 300 gives 31', () => {
+    const damageTakenBy = (templateId) => {
+      const base = createInitialState(MONSTERS, [
+        { packNumber: 1, monsterTemplateId: templateId, amount: 1 },
+      ])
+      // 템플릿에서 온 방어력만 가져온다. 나머지(위치, hp, 타이머)는 swingWith의 것이다.
+      const state = swingWith([{ x: 6, y: 4, armor: base.monsters[0].armor }])
+      return 1000 - castSwing(state).monsters[0].hp
+    }
+
+    // 40 × (1 − armor / (armor + 1000))를 손으로 계산한 값이다(E6과 같은 표).
+    expect(damageTakenBy(1)).toBe(40) // 방어력 0
+    expect(damageTakenBy(2)).toBe(32) // 250: 정확히 32
+    expect(damageTakenBy(3)).toBe(36) // 100: 36.36 → 반올림 36 (올림이면 37)
+    expect(damageTakenBy(4)).toBe(31) // 300: 30.77 → 반올림 31 (내림이면 30)
+  })
+
+  test('F23: a swing with nobody in the area still happens — no damage, no Rage, and the GCD is spent', () => {
+    // 대상(바로 옆 (5, 3))은 범위 밖이다. 휘두르면 아무도 안 맞지만 GCD는 간다.
+    const state = { ...swingWith([{ x: 5, y: 3 }], { targetId: 0 }), rage: 20 }
+
+    const whiffed = castSwing(state)
+    expect(whiffed.monsters[0].hp).toBe(1000)
+    expect(whiffed.rage).toBe(20)
+
+    // GCD를 썼으므로 바로 Furious Thrust를 눌러도(10틱 남음) 버려지고, 10틱 뒤에 나간다.
+    expect(castFurious(whiffed).monsters[0].hp).toBe(1000)
+    expect(castFurious(runTicks(whiffed, 10)).monsters[0].hp).toBe(920)
+
+    // 대상도 몬스터도 없어도 발동한다.
+    const empty = castSwing({ ...swingWith([]), targetId: null })
+    expect(empty.gcdReadyTick).toBe(10)
+  })
+
+  test('F24: more than five in the area — the target comes first, then the nearest, then the lower id', () => {
+    const hpsAfter = (specs, targetId) =>
+      castSwing(swingWith(specs, { targetId })).monsters.map((m) => m.hp)
+
+    // 뒷줄 (거리 2)이 id 0~2, 앞줄 (거리 1)이 id 3~5. 대상 없음: 앞줄 3명 + 뒷줄에서 id가 낮은 2명.
+    // id 순이었다면 앞줄(3~5) 하나가 빠졌을 것이다.
+    const rearLowIds = [
+      { x: 7, y: 3 }, { x: 7, y: 4 }, { x: 7, y: 5 },
+      { x: 6, y: 3 }, { x: 6, y: 4 }, { x: 6, y: 5 },
+    ]
+    expect(hpsAfter(rearLowIds, null)).toEqual([960, 960, 1000, 960, 960, 960])
+
+    // 빠질 뻔한 id 2를 대상으로 잡으면 대상이 먼저 들어가고, 뒷줄의 남은 둘(0, 1) 중 id 1이 빠진다.
+    expect(hpsAfter(rearLowIds, 2)).toEqual([960, 1000, 960, 960, 960, 960])
+
+    // 모든 경우에 분노는 5명 몫이다.
+    expect(castSwing(swingWith(rearLowIds)).rage).toBe(25)
+  })
+
+  test('F25: a press in the last 3 ticks of the GCD is remembered and hits whoever is in the area when it fires', () => {
+    // 두 마리: 0번(대상, 바로 앞)과 1번(범위 안). Furious Thrust로 시작해서 GCD는 틱 10까지다.
+    const first = castFurious(swingWith([{ x: 6, y: 4 }, { x: 7, y: 4 }], { targetId: 0 }))
+    expect(first.monsters[0].hp).toBe(920)
+
+    // 틱 7에 누르면 기억했다가 틱 10에 나간다. 틱 9까지는 안 나간다.
+    const queued = castSwing(runTicks(first, 7))
+    expect(runTicks(queued, 2).monsters[0].hp).toBe(920)
+
+    // 기억해 둔 사이 1번이 멀리 가 버렸다면 나가는 때의 범위로 맞힌다: 0번만 맞는다.
+    const moved = { ...queued, monsters: queued.monsters.map((m) => (m.id === 1 ? { ...m, x: 20 } : m)) }
+    const fired = runTicks(moved, 3)
+    expect(fired.monsters.map((m) => m.hp)).toEqual([880, 1000])
+    expect(fired.rage).toBe(15) // Furious Thrust 1c + 0.5c
+
+    // 4틱 이상 남았을 때 누른 입력은 버려진다.
+    const tooEarly = castSwing(runTicks(first, 6))
+    expect(runTicks(tooEarly, 4).monsters[0].hp).toBe(920)
+  })
+
+  test('F26: a kill by Brutal Swing removes every dead monster, counts them for Rage, and moves the target on', () => {
+    // 0번(대상)과 1번이 범위 안에서 한 방에 죽는다. 2번은 범위 밖에서 쫓아오는 중이다.
+    const state = swingWith(
+      [
+        { x: 6, y: 4, hp: 40 },
+        { x: 7, y: 4, hp: 40 },
+        { x: 9, y: 4 },
+      ],
+      { targetId: 0 },
+    )
+
+    const after = castSwing(state)
+
+    expect(after.monsters.map((m) => m.id)).toEqual([2])
+    expect(after.targetId).toBe(2)
+    expect(after.rage).toBe(10)
+
+    // 대상이 살아 있으면 다른 몬스터가 죽어도 대상은 그대로다. 0번은 죽고, 더 가까운 1번이
+    // 살아 있어도 멀리 있는 2번(대상)이 유지된다.
+    const targetSurvives = castSwing(
+      swingWith(
+        [
+          { x: 6, y: 4, hp: 40 },
+          { x: 7, y: 4 },
+          { x: 12, y: 4 },
+        ],
+        { targetId: 2 },
+      ),
+    )
+    expect(targetSurvives.monsters.map((m) => m.id)).toEqual([1, 2])
+    expect(targetSurvives.targetId).toBe(2)
+
+    // 대상 없이 휘둘러 죽여도 선택이 생기지는 않는다.
+    const noTarget = castSwing(swingWith([{ x: 6, y: 4, hp: 40 }, { x: 12, y: 4 }]))
+    expect(noTarget.monsters.map((m) => m.id)).toEqual([1])
+    expect(noTarget.targetId).toBeNull()
+  })
 })
