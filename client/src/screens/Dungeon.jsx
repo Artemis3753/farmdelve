@@ -6,7 +6,7 @@
 //
 // 헤더와 스킬창의 숫자는 아직 자리를 채우는 값이다.
 
-import { useEffect, useReducer } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import {
   combatReducer,
@@ -37,7 +37,8 @@ const KEY_DIRECTIONS = {
   KeyD: 'right',
 }
 
-function Dungeon({ templates, onLeave }) {
+// 한 번의 도전. 죽어서 다시 시작하면 이 컴포넌트를 통째로 새로 만든다(맨 아래 Dungeon).
+function DungeonRun({ templates, onLeave, onRetry }) {
   // useReducer는 useState의 사촌이다. useState는 화면이 새 값을 직접 끼워 넣지만
   // (setNow(...)), useReducer는 "무슨 일이 일어났는지"만 알리고 다음 상태는
   // 규칙서 함수가 계산한다. 전투 상태는 한 틱에 여러 값이 같이 바뀌므로, 바꾸는
@@ -174,7 +175,16 @@ function Dungeon({ templates, onLeave }) {
         <span>Tier 1</span>
         <span>10:00</span>
         <span>Pulls 0 / 5</span>
+        <span>HP {state.playerHp} / {state.playerMaxHp}</span>
       </section>
+
+      {/* 백로그: 죽으면 "Try again"만 보여 주고 페널티는 없다. 나가기는 위의 Abandon run이다. */}
+      {state.defeated && (
+        <section className="defeat">
+          <span>You were defeated.</span>
+          <button type="button" onClick={onRetry}>Try again</button>
+        </section>
+      )}
 
       <section>
         {/* 가로 칸 수를 CSS에 적지 않고 여기서 넘긴다. 17이 두 파일에 적히면
@@ -206,6 +216,22 @@ function Dungeon({ templates, onLeave }) {
         </div>
       </section>
     </div>
+  )
+}
+
+function Dungeon({ templates, onLeave }) {
+  // 몇 번째 도전인가. key가 바뀌면 React는 DungeonRun을 지우고 새로 만들어서, 상태(체력·
+  // 몬스터·위치)와 타이머가 전부 처음으로 돌아간다. 상태를 되돌리는 reset 이벤트를
+  // 따로 만들지 않아도 되는 가장 짧은 방법이다.
+  const [attempt, setAttempt] = useState(0)
+
+  return (
+    <DungeonRun
+      key={attempt}
+      templates={templates}
+      onLeave={onLeave}
+      onRetry={() => setAttempt(attempt + 1)}
+    />
   )
 }
 

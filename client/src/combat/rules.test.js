@@ -9,9 +9,12 @@ import { combatReducer, createInitialState } from './rules.js'
 // 코드가 틀려도 테스트가 같이 틀려서 통과해 버린다.
 
 // 서버 /api/templates가 주는 모양을 흉내 낸 입력. 필요한 필드만 넣었다.
+//
+// autoAttack은 한 번에 주는 피해, autoAttackSeconds는 공격 간격(초)이다. 숫자는 일부러
+// 실제 시드와 다르게(10, 20) 두어 코드가 템플릿 값을 그대로 쓰는지 볼 수 있게 한다.
 const MONSTERS = [
-  { monsterTemplateId: 1, hp: 30 },
-  { monsterTemplateId: 2, hp: 80 },
+  { monsterTemplateId: 1, hp: 30, autoAttack: 10, autoAttackSeconds: 2 },
+  { monsterTemplateId: 2, hp: 80, autoAttack: 20, autoAttackSeconds: 2 },
 ]
 
 // 몬스터가 없는 빈 복도. 이동 규칙만 볼 때 쓴다. 플레이어는 (0, 4)에서 시작한다.
@@ -56,8 +59,21 @@ describe('createInitialState — initial layout (seam A)', () => {
       { packNumber: 2, monsterTemplateId: 1, amount: 1 },
     ])
 
+    // 공격력은 템플릿의 autoAttack(10), 간격은 autoAttackSeconds(2초 = 20틱)이다.
+    // 첫 공격 시각 0은 "처음부터 칠 수 있다"는 뜻이다.
     expect(state.monsters).toEqual([
-      { id: 0, monsterTemplateId: 1, packNumber: 2, x: 20, y: 4, hp: 30, aggro: false },
+      {
+        id: 0,
+        monsterTemplateId: 1,
+        packNumber: 2,
+        x: 20,
+        y: 4,
+        hp: 30,
+        aggro: false,
+        attackDamage: 10,
+        attackTicks: 20,
+        nextAttackTick: 0,
+      },
     ])
   })
 
@@ -109,6 +125,10 @@ describe('createInitialState — initial layout (seam A)', () => {
     expect(state.player).toEqual({ x: 0, y: 4, facing: 'right' })
     expect(state.tick).toBe(0)
     expect(state.heldDirection).toBeNull()
+    // 체력은 백로그의 시작 체력 1000(잠정)이고, 아직 죽지 않았다.
+    expect(state.playerHp).toBe(1000)
+    expect(state.playerMaxHp).toBe(1000)
+    expect(state.defeated).toBe(false)
   })
 })
 
@@ -222,6 +242,10 @@ describe('combatReducer — movement (seam B)', () => {
       ...pulling,
       monsters: withMonster.monsters.map((m) => ({ ...m, aggro: true })),
     })
+    // 공격하는 경로(attacking), 체력이 0이 되는 경로(dying), 죽은 뒤(defeated)도 지나게 한다.
+    const attacking = deepFreeze({ ...chasing, player: { x: 9, y: 4, facing: 'right' } })
+    const dying = deepFreeze({ ...attacking, playerHp: 5 })
+    const defeated = deepFreeze({ ...attacking, playerHp: 0, defeated: true })
     const actions = [
       { type: 'tick' },
       { type: 'moveStart', direction: 'left' },
@@ -233,7 +257,7 @@ describe('combatReducer — movement (seam B)', () => {
       { type: 'somethingUnknown' },
     ]
 
-    for (const state of [walking, blocked, pulling, chasing]) {
+    for (const state of [walking, blocked, pulling, chasing, attacking, dying, defeated]) {
       const snapshot = structuredClone(state)
       for (const action of actions) {
         // 얼린 객체를 고치면 TypeError가 나서 여기서 실패한다.
@@ -387,5 +411,93 @@ describe('combatReducer — aggro and chase (seam C)', () => {
     const after = combatReducer(converging, { type: 'tick' })
 
     expect(new Set(cellsOf(after)).size).toBe(2)
+  })
+})
+
+
+// 몬스터 공격과 죽음. 규칙(백로그 + 2026-11-17 합의): 어그로가 붙은 몬스터는 사거리 1칸
+// (대각선 포함) 안에서 사거리에 닿는 즉시 한 대 때리고, 이후 자기 간격(20틱)마다 때린다.
+// 스윙 타이머는 사거리 밖에서도 흐른다. 체력이 0이 되면 전투가 멈춘다.
+//
+// 피해는 템플릿 값 그대로다(플레이어 방어력은 아직 없다). 아래 숫자는 MONSTERS 입력의
+// autoAttack에서 손으로 뽑은 값이다: 쥐 10, 엘리트 20, 시작 체력 1000.
+
+describe('combatReducer — monster attacks and defeat (seam D)', () => {
+  test('D1: a monster hits the moment it reaches range, and not before', () => {
+    // 몬스터 (10, 4), 플레이어 (5, 4). 어그로가 첫 틱에 붙고, 5·10·15·20틱에 한 칸씩 와서
+    // 20틱에 거리 1에 닿는다.
+    const state = packOneWithPlayerAt(1, 5, 4)
+
+    expect(runTicks(state, 19).playerHp).toBe(1000)
+    expect(runTicks(state, 20).playerHp).toBe(990)
+  })
+
+  test('D2: after the first hit it hits again every 20 ticks', () => {
+    // 이미 붙어 있는 배치: 몬스터 (10, 4), 플레이어 (9, 4).
+    const state = packOneWithPlayerAt(1, 9, 4)
+
+    expect(runTicks(state, 1).playerHp).toBe(990)
+    expect(runTicks(state, 20).playerHp).toBe(990)
+    expect(runTicks(state, 21).playerHp).toBe(980)
+    expect(runTicks(state, 41).playerHp).toBe(970)
+  })
+
+  test('D3: each monster hits for its own damage', () => {
+    // 쥐(10)와 엘리트(20)를 플레이어 곁에 직접 세운다.
+    const base = createInitialState(MONSTERS, [
+      { packNumber: 1, monsterTemplateId: 1, amount: 1 },
+      { packNumber: 1, monsterTemplateId: 2, amount: 1 },
+    ])
+    const state = {
+      ...base,
+      player: { x: 5, y: 4, facing: 'right' },
+      monsters: [
+        { ...base.monsters[0], x: 6, y: 4, aggro: true },
+        { ...base.monsters[1], x: 6, y: 3, aggro: true },
+      ],
+    }
+
+    expect(runTicks(state, 1).playerHp).toBe(970)
+  })
+
+  test('D4: arriving does not reset the swing timer — a monster that just swung waits out its interval', () => {
+    // 몬스터가 거리 2에서 출발하고, 마지막 공격 뒤 다음 공격 시각이 30틱이다.
+    // 5틱에 곁에 와도 30틱이 되기 전에는 때리지 않는다.
+    const base = packOneWithPlayerAt(1, 5, 4)
+    const state = {
+      ...base,
+      monsters: [{ ...base.monsters[0], x: 7, y: 4, aggro: true, nextAttackTick: 30 }],
+    }
+
+    expect(runTicks(state, 29).playerHp).toBe(1000)
+    expect(runTicks(state, 30).playerHp).toBe(990)
+  })
+
+  test('D5: health stops at 0 and the player is defeated', () => {
+    const adjacent = packOneWithPlayerAt(1, 9, 4)
+
+    // 체력 10에서 10을 맞으면 정확히 0.
+    const exact = runTicks({ ...adjacent, playerHp: 10 }, 1)
+    expect(exact.playerHp).toBe(0)
+    expect(exact.defeated).toBe(true)
+
+    // 체력 5에서 10을 맞아도 음수가 되지 않는다.
+    const overkill = runTicks({ ...adjacent, playerHp: 5 }, 1)
+    expect(overkill.playerHp).toBe(0)
+    expect(overkill.defeated).toBe(true)
+
+    // 살아 있는 동안은 defeated가 아니다.
+    expect(runTicks(adjacent, 1).defeated).toBe(false)
+  })
+
+  test('D6: once defeated, nothing moves, attacks or ticks any more', () => {
+    const adjacent = packOneWithPlayerAt(1, 9, 4)
+    const dead = runTicks({ ...adjacent, playerHp: 10 }, 1)
+
+    // 같은 객체를 그대로 돌려받아야 한다(아무 일도 일어나지 않았다는 뜻).
+    expect(combatReducer(dead, { type: 'tick' })).toBe(dead)
+    expect(combatReducer(dead, { type: 'moveStart', direction: 'left' })).toBe(dead)
+    expect(combatReducer(dead, { type: 'moveStop', direction: 'left' })).toBe(dead)
+    expect(runTicks(dead, 100)).toEqual(dead)
   })
 })

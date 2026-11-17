@@ -34,6 +34,10 @@ const AGGRO_RADIUS = 5;
 // 추격하는 몬스터는 이 거리까지 다가오면 멈춘다.
 const MELEE_RANGE = 1;
 
+// 플레이어의 시작 체력(백로그 Tier-1 numbers, 잠정). 실제로는 장비의 base_health가
+// 더해진 값이 되겠지만, 장비 연결 전이라 상수로 둔다.
+const PLAYER_MAX_HP = 1000;
+
 // 방향은 문자열로 들고, 움직일 때만 이 표에서 칸 차이를 찾는다. 상태에 객체를
 // 넣으면 { dx: 1, dy: 0 } === { dx: 1, dy: 0 }이 false라 "오른쪽을 보고 있나"를
 // ===로 물을 수 없다. y는 아래로 갈수록 커진다 — 화면 좌표와 같은 방향이다.
@@ -90,12 +94,23 @@ export function createInitialState(monsters, packs) {
         hp: template.hp,
         // 어그로가 붙었는가. 한 번 붙으면 풀리지 않는다(leash 없음, 2026-11-17).
         aggro: false,
+        // 템플릿의 자동공격 값을 개체에 복사해 둔다(hp와 같은 방식). 간격은 초를 틱으로
+        // 바꿔 든다. nextAttackTick 0은 "처음부터 칠 수 있다"는 뜻이라 사거리에 닿는
+        // 즉시 첫 공격이 나간다(2026-11-17).
+        attackDamage: template.autoAttack,
+        attackTicks: secondsToTicks(template.autoAttackSeconds),
+        nextAttackTick: 0,
       });
     }
   }
 
   return {
     tick: 0,
+    // 플레이어 체력. player 객체는 위치 전용으로 두었다.
+    playerHp: PLAYER_MAX_HP,
+    playerMaxHp: PLAYER_MAX_HP,
+    // 체력이 0이 되면 true. 그 뒤로는 전투가 멈춘다(백로그: 죽으면 "try again"만).
+    defeated: false,
     // 복도 왼쪽 끝, 세로 가운데에서 출발한다. 1번 팩(x = 10)까지 어그로 반경
     // 5칸을 빼면 다섯 칸을 걸어야 첫 싸움이 붙는다.
     player: { x: 0, y: Math.floor(CORRIDOR_HEIGHT / 2), facing: 'right' },
@@ -215,13 +230,46 @@ function chaseStep(state) {
 }
 
 
-// 시간이 한 틱 흐른 뒤 몬스터 쪽에서 일어나는 일: 어그로를 붙이고, 5틱 박자에는 걷는다.
+// 사거리 안에 있고 공격 시각이 된 몬스터가 플레이어를 때린다.
+//
+// 스윙 타이머(nextAttackTick)는 사거리와 상관없이 흐른다: 사거리 밖에 있으면 그냥
+// 못 칠 뿐이고, 방금 친 몬스터가 쫓아와 다시 붙어도 간격이 지나기 전에는 못 친다.
+// 한 틱에 여러 마리가 칠 수 있고, 피해는 합쳐서 한 번에 깎는다. 체력은 0 아래로
+// 내려가지 않는다.
+//
+// 어그로를 따로 묻지 않는다 — 사거리 1 안의 몬스터는 어그로 반경 5 안에 있고, 같은 틱에
+// 공격 직전에 어그로가 붙으므로 사거리 안이면 이미 어그로가 붙어 있다.
+function attackStep(state) {
+  const swinging = state.monsters.filter(
+    (m) => distanceBetween(m, state.player) <= MELEE_RANGE && state.tick >= m.nextAttackTick,
+  );
+  if (swinging.length === 0) return state;
+
+  const damage = swinging.reduce((sum, m) => sum + m.attackDamage, 0);
+  const playerHp = Math.max(0, state.playerHp - damage);
+  const swingingIds = new Set(swinging.map((m) => m.id));
+
+  return {
+    ...state,
+    playerHp,
+    defeated: playerHp === 0,
+    monsters: state.monsters.map((m) =>
+      swingingIds.has(m.id) ? { ...m, nextAttackTick: state.tick + m.attackTicks } : m,
+    ),
+  };
+}
+
+
+// 시간이 한 틱 흐른 뒤 몬스터 쪽에서 일어나는 일: 어그로를 붙이고, 5틱 박자에는 걷고,
+// 사거리 안이면 때린다(이 순서).
 //
 // 추격 몬스터는 전원이 틱 5의 배수에 함께 움직인다(2026-11-17). 몬스터마다 타이머를
 // 두지 않아 상태 필드가 늘지 않는다. 대신 어그로가 붙은 뒤 첫 걸음까지 최대 0.5초가 걸린다.
+// 공격은 걸음과 달리 몬스터마다 자기 타이머를 쓴다 — 팩이 한꺼번에 때리면 피해가 몰린다.
 function advanceMonsters(state) {
   const pulled = pullPacks(state);
-  return pulled.tick % MOVE_TICKS === 0 ? chaseStep(pulled) : pulled;
+  const chased = pulled.tick % MOVE_TICKS === 0 ? chaseStep(pulled) : pulled;
+  return attackStep(chased);
 }
 
 
@@ -229,6 +277,9 @@ function advanceMonsters(state) {
 // React는 "객체가 바뀌었나"를 === 로 보고 다시 그릴지 정하기 때문에, 원래 객체를
 // 고쳐서 돌려주면 바뀐 것을 못 알아채고 화면이 그대로 남는다.
 export function combatReducer(state, action) {
+  // 죽은 뒤에는 아무 일도 일어나지 않는다. 같은 객체를 돌려줘서 화면도 다시 안 그린다.
+  if (state.defeated) return state;
+
   switch (action.type) {
     // 시간이 한 틱 흐르고, 플레이어는 걸음 간격이 지났으면 한 걸음 간다. 그 뒤에
     // 몬스터 쪽이 움직인다(플레이어가 먼저, 몬스터가 나중).

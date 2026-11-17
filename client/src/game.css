@@ -342,6 +342,18 @@ button.plot:enabled:hover {
   margin-bottom: 12px;
 }
 
+/* 죽었을 때 나오는 줄. 몬스터와 같은 붉은색으로 알린다. */
+.defeat {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid #B4402F;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  color: #B4402F;
+}
+
 /* 복도. 가로 칸 수는 Dungeon.jsx가 인라인 style로 넘긴다 — 여기 적으면 17이
    두 파일에 생긴다. 세로 줄 수는 적지 않아도 칸이 17개마다 다음 줄로 넘어간다. */
 .corridor {
