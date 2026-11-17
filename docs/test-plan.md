@@ -254,7 +254,7 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 | F9 | A defeated player cannot use skills, and a remembered skill does not fire on the tick the player dies | Nothing may keep happening to a dead player | — |
 | F10 | The auto-attack keeps swinging during the GCD | The spec says the auto-attack costs no button and no GCD | — |
 | F11 | Overhead Slam spends all whole points and deals 200, 303, 387, 459, 525 for 1c to 5c; it spends the GCD | The curve is the design decision of this slice; the values are hand-computed, and 387, 459 and 525 tell rounding from flooring and ceiling | Whether the curve feels right |
-| F12 | 2.5c spends 2c, deals 303 and leaves 0.5c | The spec says leftover half points stay on the bar | Nothing yet makes half points in the game (Brutal Swing is not built) |
+| F12 | 2.5c spends 2c, deals 303 and leaves 0.5c | The spec says leftover half points stay on the bar | Not tried by hand: Brutal Swing now makes half points in play, but the two skills were checked separately |
 | F13 | With under 1c (0 or 0.5c) nothing happens, and the GCD is not spent | A failed press must not cost the player a second of GCD | — |
 | F14 | With no target, or a target out of range, nothing happens and the Rage is kept | A failed press must not waste the points the player built | — |
 | F15 | Armor cuts the damage and it is rounded: 3c vs 250 armor gives 310, 1c vs 100 gives 182, 2c vs 300 gives 233 | The Slam shares the armor rule; each value separates rounding from flooring or ceiling | — |
@@ -499,8 +499,9 @@ slot 3 is dim with no Rage and lights when 1c is held; pressing 3 with 0 Rage do
 (no damage, no GCD); after three Furious Thrusts (3c) the rat went from 440 to 53, exactly
 the 387 of the table, Rage fell to 0 and slot 3 dimmed again; the console showed no errors
 or warnings after a reload. The half-point case (F12) and the queued Slam (F16) were not
-tried in the browser: nothing in the game makes half a point yet, and the queue is the same
-code path as Furious Thrust's.
+tried in the browser at that point: Brutal Swing, which makes half points, did not exist
+yet, and the queue is the same code path as Furious Thrust's. They were still not tried
+by hand after Brutal Swing was added.
 
 Then Brutal Swing, checked on 2026-11-17 (key presses sent from the page): six dashed tiles
 mark the area, three wide and two ahead, and they swap to the other side when the player
