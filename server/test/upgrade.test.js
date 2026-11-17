@@ -11,6 +11,7 @@ describe('attemptUpgrade', () => {
   // beforeEach에서 채우고 it에서 읽는다. 서로 다른 함수라 바깥에 선언해야 같이 본다.
   let playerId;
   let createdGearIds;
+  let createdPlayerIds;
   let stacksSnapshot;
 
   // 가방 전체를 "재료 번호 순"으로 읽는다. ORDER BY가 없으면 DB는 행 순서를 보장하지
@@ -40,22 +41,38 @@ describe('attemptUpgrade', () => {
   //
   // VALUES를 쓴 이유: INSERT ... SELECT의 SELECT 목록에서는 $2 같은 자리표시자의
   // 타입을 DB가 열 타입으로 정해 주지 않아 오류가 날 수 있다.
-  async function createGear(upgradeLevel) {
+  //
+  // ownerId를 생략하면 시드 플레이어의 장비가 된다. "남의 장비" 테스트만 다른
+  // 플레이어 번호를 넘긴다.
+  async function createGear(upgradeLevel, ownerId = playerId) {
     const result = await pool.query(
       `INSERT INTO gear_instance (gear_template_id, player_id, upgrade_level)
        VALUES ((SELECT gear_template_id FROM gear_template WHERE name = $1), $2, $3)
        RETURNING gear_instance_id`,
-      ['Solid Scythe', playerId, upgradeLevel],
+      ['Solid Scythe', ownerId, upgradeLevel],
     );
     const gearInstanceId = result.rows[0].gear_instance_id;
     createdGearIds.push(gearInstanceId);
     return gearInstanceId;
   }
 
+  // 시드에는 플레이어가 한 명뿐이라 "남"을 직접 만든다. player의 모든 컬럼에 기본값이
+  // 있어서 DEFAULT VALUES로 충분하다. player_id는 DB가 붙여 주는 번호라 RETURNING으로
+  // 돌려받고, afterEach가 지울 수 있게 기록해 둔다.
+  async function createOtherPlayer() {
+    const result = await pool.query(
+      'INSERT INTO player DEFAULT VALUES RETURNING player_id',
+    );
+    const otherPlayerId = result.rows[0].player_id;
+    createdPlayerIds.push(otherPlayerId);
+    return otherPlayerId;
+  }
+
   beforeEach(async () => {
     const player = await pool.query('SELECT player_id FROM player');
     playerId = player.rows[0].player_id;
     createdGearIds = [];
+    createdPlayerIds = [];
 
     // 어떤 테스트는 재료를 지우거나(롤백 테스트) 실제로 태운다(실패 롤 테스트).
     // 시작 상태를 찍어 두었다가 afterEach에서 그대로 되돌린다.
@@ -71,6 +88,10 @@ describe('attemptUpgrade', () => {
     await pool.query('DELETE FROM gear_instance WHERE gear_instance_id = ANY($1)', [
       createdGearIds,
     ]);
+
+    // 플레이어는 반드시 장비보다 나중에 지운다. gear_instance가 player를 참조하므로
+    // 순서가 거꾸로면 FK 위반이다.
+    await pool.query('DELETE FROM player WHERE player_id = ANY($1)', [createdPlayerIds]);
 
     // 가방은 통째로 지우고 스냅샷대로 다시 채운다. 테스트가 어떤 행을 지웠든
     // 바꿨든 같은 결과가 되는 가장 단순한 방법이다.
@@ -143,5 +164,24 @@ describe('attemptUpgrade', () => {
         : stack,
     );
     expect(await readStacks()).toEqual(expectedStacks);
+  });
+
+  it('rejects with 404 gear_not_found and consumes nothing when the gear belongs to another player', async () => {
+    // +4로 만드는 이유: 소유자 검사가 사라져도 5단계 비용 행이 있어서, 요청이 TypeError가
+    // 아니라 "내 재료가 실제로 소모되는 것"으로 이어진다. 그래야 이 테스트가 검사의
+    // 부재를 정확히 잡는다.
+    const otherPlayerId = await createOtherPlayer();
+    const foreignGearId = await createGear(4, otherPlayerId);
+    const stacksBefore = await readStacks();
+
+    // 남의 장비는 없는 장비와 같은 404로 합쳐진다(upgrade.js 34~38행).
+    await expect(attemptUpgrade(playerId, foreignGearId)).rejects.toMatchObject({
+      status: 404,
+      reason: 'gear_not_found',
+    });
+
+    // 내 재료가 안 나갔고, 남의 장비 단계도 그대로여야 한다.
+    expect(await readStacks()).toEqual(stacksBefore);
+    expect(await readUpgradeLevel(foreignGearId)).toBe(4);
   });
 });
