@@ -1,8 +1,10 @@
 // 전투 규칙서. React를 모르는 순수 JS라서, 브라우저 없이 node로 바로 불러
 // 시험해볼 수 있다 — 화면(Dungeon.jsx)과 떼어 둔 이유가 이것이다.
 //
-// 모든 변화는 combatReducer 한 곳에서만 일어난다. 키 입력도 "눌린 방향"을
-// 적어둘 뿐이고, 실제로 움직이는 건 tick이다(2026-09-30). 그래서 같은 입력
+// 모든 변화는 combatReducer 한 곳에서만 일어난다. 키 입력은 "눌린 방향"을
+// 적어두고, 걸음은 tick마다 이어진다(2026-09-30). 단 키를 누르는 그 순간에도
+// 한 걸음을 먼저 간다(2026-11-17) — 톡 쳐도 움직이게 하려는 것이다. 어느 쪽이든
+// 걸음 사이 간격(MOVE_TICKS)은 지켜서 연타로 속도를 넘지 못한다. 같은 입력
 // 순서를 넣으면 언제나 같은 결과가 나온다.
 //
 // 시간은 초가 아니라 정수 틱으로 센다. 0.1을 계속 더하면 소수 오차가 쌓여
@@ -22,6 +24,15 @@ const PACK_SPACING = 10;
 
 // 이동 속도 초당 2칸 = 5틱에 한 칸(백로그 Dungeon space, 잠정).
 const MOVE_TICKS = 5;
+
+// 어그로 반경 5칸(백로그 Dungeon space). 거리는 가로·세로 칸 차이 중 큰 쪽으로 잰다 —
+// 사거리 표기(range N = 대각선 포함 정사각형)와 같은 자라서, 대각선으로 다가가도
+// 가로로 다가가도 같은 5칸이다(2026-11-17).
+const AGGRO_RADIUS = 5;
+
+// 몬스터가 때릴 수 있는 거리. 근접 사거리 1칸(대각선 포함, 백로그 Grid movement).
+// 추격하는 몬스터는 이 거리까지 다가오면 멈춘다.
+const MELEE_RANGE = 1;
 
 // 방향은 문자열로 들고, 움직일 때만 이 표에서 칸 차이를 찾는다. 상태에 객체를
 // 넣으면 { dx: 1, dy: 0 } === { dx: 1, dy: 0 }이 false라 "오른쪽을 보고 있나"를
@@ -77,6 +88,8 @@ export function createInitialState(monsters, packs) {
         x: row.packNumber * PACK_SPACING + FORMATION[slot].dx,
         y: Math.floor(CORRIDOR_HEIGHT / 2) + FORMATION[slot].dy,
         hp: template.hp,
+        // 어그로가 붙었는가. 한 번 붙으면 풀리지 않는다(leash 없음, 2026-11-17).
+        aggro: false,
       });
     }
   }
@@ -101,44 +114,131 @@ function isWalkable(state, x, y) {
 }
 
 
+// 눌린 방향이 있고 걸음 간격이 지났으면 한 걸음 간다. tick과 moveStart가 같이 쓴다.
+// 현재 시각은 state.tick이다.
+function stepIfReady(state) {
+  // 눌린 방향이 없거나, 지난 걸음에서 아직 5틱이 안 지났으면 그대로 둔다.
+  if (!state.heldDirection || state.tick < state.nextMoveTick) {
+    return state
+  }
+
+  const { dx, dy } = DIRECTIONS[state.heldDirection]
+  const x = state.player.x + dx
+  const y = state.player.y + dy
+
+  // 막힌 칸이어도 몸은 그쪽으로 돌린다. 걸음은 쓰지 않았으므로 다음에 다시
+  // 시도한다 — 앞의 몬스터가 비키면 바로 움직일 수 있다.
+  if (!isWalkable(state, x, y)) {
+    return {
+      ...state,
+      player: { ...state.player, facing: state.heldDirection },
+    }
+  }
+
+  return {
+    ...state,
+    player: { x, y, facing: state.heldDirection },
+    nextMoveTick: state.tick + MOVE_TICKS,
+  }
+}
+
+
+// 두 칸의 거리: 가로·세로 칸 차이 중 큰 쪽(정사각형 거리).
+function distanceBetween(a, b) {
+  return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+}
+
+
+// 플레이어가 반경 안에 든 몬스터의 팩 전체에 어그로를 붙인다.
+//
+// 팩 단위인 이유: 던전이 놓는 단위가 팩이고 플레이어가 끌고 오는 단위가 pull이라,
+// 한 마리만 끌려오면 "한 팩 = 한 번의 싸움"이라는 숫자(5타겟 상한 계산)가 흐려진다.
+function pullPacks(state) {
+  const pulled = new Set(
+    state.monsters
+      .filter((m) => !m.aggro && distanceBetween(m, state.player) <= AGGRO_RADIUS)
+      .map((m) => m.packNumber),
+  );
+  if (pulled.size === 0) return state;
+
+  return {
+    ...state,
+    monsters: state.monsters.map((m) =>
+      pulled.has(m.packNumber) ? { ...m, aggro: true } : m,
+    ),
+  };
+}
+
+
+// 몬스터가 이 칸에 들어갈 수 있는가. 복도 밖과 다른 몬스터가 선 칸은 안 된다.
+// 플레이어 칸은 따로 막지 않는다 — 몬스터는 플레이어와 거리 1 이하에서 멈추므로
+// 거리 2 이상에서 한 걸음으로 플레이어 칸에 닿을 수 없다.
+function isOpenForMonster(monsters, x, y) {
+  const inside = x >= 0 && x < CORRIDOR_LENGTH && y >= 0 && y < CORRIDOR_HEIGHT;
+  const taken = monsters.some((m) => m.x === x && m.y === y);
+  return inside && !taken;
+}
+
+
+// 어그로가 붙은 몬스터들이 플레이어 쪽으로 한 칸씩 다가간다.
+//
+// 길찾기 없이 "지금 칸에서 플레이어에게 더 가까워지는 한 칸"만 본다. 복도에 벽이
+// 없고 막는 것은 몬스터뿐이라 그걸로 충분하다. 먼 축(칸 차이가 큰 쪽)을 먼저
+// 시도하고, 막혀 있으면 다른 축을 시도하고, 둘 다 막히면 이번 박자는 쉰다.
+//
+// 몬스터를 id 순서로 하나씩 처리하고, 앞 몬스터가 옮긴 자리를 뒤 몬스터가 본다.
+// 그래서 같은 칸에 둘이 서는 일이 없다.
+function chaseStep(state) {
+  const { player } = state;
+  let monsters = state.monsters;
+
+  for (let i = 0; i < monsters.length; i++) {
+    const monster = monsters[i];
+    if (!monster.aggro || distanceBetween(monster, player) <= MELEE_RANGE) continue;
+
+    const dx = player.x - monster.x;
+    const dy = player.y - monster.y;
+    const sideways = { x: monster.x + Math.sign(dx), y: monster.y };
+    const forward = { x: monster.x, y: monster.y + Math.sign(dy) };
+    const candidates = Math.abs(dx) >= Math.abs(dy) ? [sideways, forward] : [forward, sideways];
+
+    // 칸 차이가 0인 축은 제자리를 가리키므로 건너뛴다.
+    const target = candidates.find(
+      (c) => (c.x !== monster.x || c.y !== monster.y) && isOpenForMonster(monsters, c.x, c.y),
+    );
+    if (!target) continue;
+
+    monsters = monsters.map((m, j) => (j === i ? { ...m, x: target.x, y: target.y } : m));
+  }
+
+  return { ...state, monsters };
+}
+
+
+// 시간이 한 틱 흐른 뒤 몬스터 쪽에서 일어나는 일: 어그로를 붙이고, 5틱 박자에는 걷는다.
+//
+// 추격 몬스터는 전원이 틱 5의 배수에 함께 움직인다(2026-11-17). 몬스터마다 타이머를
+// 두지 않아 상태 필드가 늘지 않는다. 대신 어그로가 붙은 뒤 첫 걸음까지 최대 0.5초가 걸린다.
+function advanceMonsters(state) {
+  const pulled = pullPacks(state);
+  return pulled.tick % MOVE_TICKS === 0 ? chaseStep(pulled) : pulled;
+}
+
+
 // 상태 + 일어난 일 → 새 상태. 받은 상태는 절대 고치지 않고 새 객체를 돌려준다.
 // React는 "객체가 바뀌었나"를 === 로 보고 다시 그릴지 정하기 때문에, 원래 객체를
 // 고쳐서 돌려주면 바뀐 것을 못 알아채고 화면이 그대로 남는다.
 export function combatReducer(state, action) {
   switch (action.type) {
-    case 'tick': {
-      const tick = state.tick + 1;
-
-      // 눌린 방향이 없거나, 지난 걸음에서 아직 5틱이 안 지났으면 시간만 흐른다.
-      if (!state.heldDirection || tick < state.nextMoveTick) {
-        return { ...state, tick };
-      }
-
-      const { dx, dy } = DIRECTIONS[state.heldDirection];
-      const x = state.player.x + dx;
-      const y = state.player.y + dy;
-
-      // 막힌 칸이어도 몸은 그쪽으로 돌린다. 걸음은 쓰지 않았으므로 다음 틱에
-      // 다시 시도한다 — 앞의 몬스터가 비키면 바로 움직일 수 있다.
-      if (!isWalkable(state, x, y)) {
-        return {
-          ...state,
-          tick,
-          player: { ...state.player, facing: state.heldDirection },
-        };
-      }
-
-      return {
-        ...state,
-        tick,
-        player: { x, y, facing: state.heldDirection },
-        nextMoveTick: tick + MOVE_TICKS,
-      };
-    }
+    // 시간이 한 틱 흐르고, 플레이어는 걸음 간격이 지났으면 한 걸음 간다. 그 뒤에
+    // 몬스터 쪽이 움직인다(플레이어가 먼저, 몬스터가 나중).
+    case 'tick':
+      return advanceMonsters(stepIfReady({ ...state, tick: state.tick + 1 }));
 
     // 나중에 누른 방향이 이긴다. 오른쪽을 누른 채 위를 누르면 위로 간다.
+    // 누른 순간 걸음 간격이 지나 있으면 틱을 기다리지 않고 바로 한 걸음 간다.
     case 'moveStart':
-      return { ...state, heldDirection: action.direction };
+      return stepIfReady({ ...state, heldDirection: action.direction });
 
     // 뗀 키가 지금 가는 방향일 때만 멈춘다. 오른쪽 → 위를 누르고 오른쪽을 먼저
     // 떼는 경우, 무조건 null로 만들면 아직 누르고 있는 위까지 멈춰버린다.
