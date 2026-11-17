@@ -12,14 +12,15 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   player's auto-attack, targets and kills (seam E), and skills, Rage and the GCD
   (seam F). The screen (`Dungeon.jsx`) is not a seam: it is a thin layer that
   dispatches actions and draws the state, and it was checked by hand in the browser.
-- **Every case below was approved by the author** before it was written, in seven
+- **Every case below was approved by the author** before it was written, in eight
   rounds on 2026-11-17: A1–A5 and B1–B7, then the movement rule change (B1, B5–B7
   edits, B8–B10), then aggro (C1–C7), then monster attacks (D1–D6, plus edits to A1,
   A5 and B7), then the player's attacks (E1–E9, plus edits to A1, A5 and B7), then
-  skills (F1–F10, plus edits to A5 and B7), then Overhead Slam (F11–F18). No test is
-  written outside the list. The extensions after approval are in E6, which gained two
-  more armor values to pin the rounding rule, and in F5 and F9, which gained one more
-  assertion each to close gaps the mutation check found.
+  skills (F1–F10, plus edits to A5 and B7), then Overhead Slam (F11–F18), then Brutal
+  Swing (F19–F26). No test is written outside the list. The extensions after approval
+  are in E6, which gained two more armor values to pin the rounding rule, and in F5, F9
+  and F26, which gained one or two more assertions each to close gaps the mutation check
+  found.
 - **The test code was written by Claude** from that list.
 - **The rule changes were decided by the author**: a key press steps at once, the
   aggro rules, the attack rules, and the targeting rules below. Claude changed
@@ -29,13 +30,17 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 
 - A1–A5 and B1–B7 are **characterization tests**: `rules.js` already existed, so
   they passed the first time they ran. They are not test-first development.
-- B8–B10, C1–C7, D1–D6, E1–E9 and F1–F18 were **red before the implementation**,
+- B8–B10, C1–C7, D1–D6, E1–E9 and F1–F26 were **red before the implementation**,
   except C7, E4, E9, F2, F9, F13 and F14, which also passed before the implementation
   because nothing moved, hit, could be selected or could be cast yet (an unknown skill
   is ignored), so "nothing overlaps", "nobody is hit without a target", "a defeated
   player cannot select", "a failed press does nothing", "a defeated player cannot cast",
   "a spender with under 1c does nothing" and "a slam with no target or out of range does
   nothing" held trivially. They earn their place through the mutation check below.
+  F19, F21 and F24 were first red for the wrong reason: a crash in the test's own setup
+  (a pack holds at most four monsters, and these cases need five or six). After the
+  setup was fixed, "the skill does not exist" was checked as a breakage, and all of
+  F19–F26 fail on it, so they do depend on the feature.
 - Expected values are written by hand from the rules in
   [design-backlog.md](design-backlog.md) (nine tiles tall, 2 tiles per second,
   packs 10 tiles apart, aggro radius 5, auto-attack every 2 seconds, armor
@@ -114,9 +119,9 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 
 ## Skill, Rage and GCD rules (decided 2026-11-17)
 
-- **Two skills so far:** Furious Thrust, the single-target builder on key 1, and
-  Overhead Slam, the single-target spender on key 3. The area skills (Brutal Swing,
-  Whirling Slash) come in later slices, and slot 2 stays empty until Brutal Swing.
+- **Three skills so far:** Furious Thrust, the single-target builder on key 1, Brutal
+  Swing, the area builder on key 2, and Overhead Slam, the single-target spender on key
+  3. Whirling Slash (the area spender) comes in a later slice.
 - **Furious Thrust** needs the primary target inside range 1 (diagonals included), hits
   it for 80 before armor, and adds 1c of Rage. Skills cost no resource. Rage is stored in
   whole units (1c = 10, maximum 5c = 50), as the spec note says, so 0.5c never needs a
@@ -132,7 +137,8 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   feel stiff.
 - **A skill that cannot be used does nothing:** no damage, no Rage, no GCD. The same
   holds for a remembered skill that has become unusable when the GCD ends (no target, or
-  out of range): it is dropped and the GCD is not spent.
+  out of range): it is dropped and the GCD is not spent. Brutal Swing is the one
+  exception: it has no unusable state (see below).
 - **Within one tick:** monsters hit, then a remembered skill fires, then the
   auto-attack swings. A player killed by the monsters that tick casts nothing.
 - **The Furious Thrust number is fitted to the backlog's anchor**: 80 per second from the
@@ -156,6 +162,18 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   the choice back toward 5c.
 - **Effect on the anchor**: pressing only Furious Thrust is still 100 DPS. A 3c cycle
   gives about 157 per GCD plus 20 from the auto-attack, about 177 DPS.
+- **Brutal Swing** (decided 2026-11-17) hits every enemy in the six tiles three wide and
+  two rows ahead of the player, in the direction the player faces, up to 5 enemies. Each
+  enemy hit takes 40 before armor and adds 0.5c (5 units) of Rage. 40 is half of Furious
+  Thrust, the backlog's "AoE efficiency 0.5": two enemies equal one Furious Thrust in both
+  damage and Rage. It needs no target and no range check, since the area is the range.
+  **It is the one skill that always fires:** with nobody in the area it hits no one, makes
+  no Rage and still spends the GCD (the author's choice, so that facing matters). When
+  more than five stand in the area, the selected target comes first if it is in the area,
+  then the nearest to the player, and equal distances go to the lower id. Enemies killed by
+  the swing count for Rage, and the target moves on only if the target itself died.
+  Pressing a direction key toward a blocked tile turns the player in place (B4, B10),
+  which is how the player aims at monsters standing right next to them.
 
 ## Cases
 
@@ -243,6 +261,14 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 | F16 | A key press in the last 3 ticks of the GCD is remembered and spends the Rage held when it fires; with under 1c at that moment it is dropped; an earlier press is dropped | The queue must work for the spender, whose result depends on the Rage at fire time | — |
 | F17 | A kill by Slam removes the monster, spends the Rage and moves the target on | Spenders end fights too | — |
 | F18 | The auto-attack keeps swinging after a Slam | The auto-attack uses no button and no GCD | — |
+| F19 | Brutal Swing facing right hits the six tiles three wide and two rows ahead (3 enemies inside, 5 around them untouched: 3 ahead, 2 to the side, behind, beside the player) and adds 1.5c | The shape is the skill; each outside spot is one way the area could be wrong by a tile | Anything beyond the one position |
+| F20 | Facing up, down and left, a corner tile of the area is hit and the next tile out is not | The area must turn with the player; facing is the reason the skill is not a circle | Diagonal facing (the game only has four directions) |
+| F21 | Each enemy hit makes 0.5c of Rage: 1 hit 0.5c, 2 hits 1c, 5 hits 2.5c, and Rage stops at 5c | Builders make the Rage the spenders use | — |
+| F22 | Armor cuts each hit and it is rounded: 250 gives 32, 100 gives 36, 300 gives 31 | The same armor rule as every other hit | — |
+| F23 | With nobody in the area the swing still happens: no damage, no Rage, the GCD is spent; the same with no monsters and no target | The author's rule: a miss costs the GCD, so facing matters | Feedback for the miss (none yet) |
+| F24 | With six enemies in the area only five are hit: the target first when it is in the area, then the nearest, then the lower id | The cap is what makes the six tiles mean something | Targets standing on the same tile (monsters cannot share one) |
+| F25 | A press in the last 3 ticks of the GCD is remembered and hits whoever is in the area when it fires; an earlier press is dropped | The queue must read the world when the skill fires | — |
+| F26 | A kill by the swing removes every dead monster, counts them for Rage, and moves the target on only when the target died; a swing with no target selects nothing | Area kills must not break targeting | — |
 
 ## Movement rule change (2026-11-17)
 
@@ -259,8 +285,10 @@ re-run to confirm a test fails. All 93 breakages in the first part of the table 
 caught on the code before Overhead Slam (three of them are the rounding variants in one
 row, so that part has 91 rows). The Overhead Slam slice added 21 more breakages, listed
 after the table: 16 new rows and 5 re-runs of existing rows against the changed
-`castSkill`. All 114 were caught, and `rules.js` was restored afterwards. The test lists
-in the first 91 rows are from before the Slam tests existed, so they do not name F11–F18.
+`castSkill`. The Brutal Swing slice added 42 more: 35 new rows and 7 re-runs of existing
+rows against the refactored hit code. All 156 were caught, and `rules.js` was restored
+afterwards. The test lists in the first 91 rows are from before the Slam and Swing tests
+existed, so they do not name F11–F26.
 
 Along the way, several breakages first appeared to survive. Some were mistakes in the
 breaking script (a syntax error, or a pattern that did not apply), not real survivors.
@@ -394,6 +422,56 @@ Re-runs against the changed `castSkill`, each still caught: Rage not capped (F7)
 gain 1c → 2c (F1, F5), Furious Thrust damage 80 → 79 (F1, F3–F6, F8, F10, F11, F13, F16),
 no GCD on a cast (F3, F4, F5, F11, F16), and the range check removed (E5, F2, F14).
 
+Added with Brutal Swing (35 new rows):
+
+| Breakage | Caught by |
+|----------|-----------|
+| The skill does not exist | F19–F26 |
+| The area skill goes through the single-target path | F19, F20, F21, F22, F23, F24, F26 |
+| Area 2 rows → 1 row | F19, F20, F21, F24, F26 |
+| Area 2 rows → 3 rows | F19, F20 |
+| Area half-width 1 → 0 | F19, F20, F21, F24 |
+| Area half-width 1 → 2 | F19, F20 |
+| Cap 5 → 4 targets | F21, F24 |
+| Cap 5 → 6 targets | F24 |
+| Damage per target 40 → 41 | F19, F20, F22, F24, F25 |
+| Damage per target 40 → 80 | F19, F20, F22, F24, F25 |
+| Rage per target 0.5c → 1c | F19, F21, F24, F25, F26 |
+| Rage per target 0.5c → 0 | F19, F21, F24, F25, F26 |
+| Swing Rage not capped | F21 |
+| Area starts at the player's own row (0 ahead) | F19, F23 |
+| Area starts 2 rows ahead | F19, F21, F22, F24, F25, F26 |
+| Area ends one row early (`<` instead of `<=`) | F19, F20, F21, F24, F26 |
+| Area one column narrower (`<` instead of `<=`) | F19, F20, F21, F24 |
+| Side check removed | F19, F20 |
+| Facing ignored (always right) | F20 |
+| Area behind the player instead of ahead | F19, F20, F21, F22, F24, F25, F26 |
+| Side measured along the wrong axis | F19, F20, F21, F24, F26 |
+| The area filter accepts every monster | F19, F20, F23, F25, F26 |
+| Selected target not put first | F24 |
+| Selected target put last | F24 |
+| No distance ordering | F24 |
+| Farthest first | F24 |
+| Equal distances go to the higher id | F24 |
+| The swing does not spend the GCD | F23 |
+| The swing needs a target | F19, F20, F21, F22, F23, F24, F26 |
+| The swing needs someone in the area | F23 |
+| Target re-picked even when it survived | F26 |
+| Target picked even when none was selected | F26 |
+| Rage counts only the survivors | F26 |
+| Rage counts every monster alive, not the ones hit | F19, F23, F24, F25, F26 |
+| Only the first enemy in the area is hit | F19, F24, F26 |
+
+Re-runs against the refactored hit code, each still caught: armor ignored (E6, F6, F15,
+F22), armor constant 1000 → 500 (E6, F6, F15, F22), target never re-picked (E8, F8, F17,
+F26), the new target is the first monster instead of the nearest (E8), a dead monster stays
+on the field (E7, E8, F8, F17, F26), a hit edits a monster in place (B7, F4, F10, F16, F18,
+F25) and the single-target range check removed (E5, F2, F14).
+
+One breakage survived and was not a test gap: comparing ids when two enemies are equally
+far. The monster list is always in id order and the sort keeps equal items in place, so the
+comparison did nothing. It was removed as dead code, and the tie rule is still pinned by F24.
+
 This shows the suite notices these breakages. It does not show that the rules are
 complete.
 
@@ -424,12 +502,21 @@ or warnings after a reload. The half-point case (F12) and the queued Slam (F16) 
 tried in the browser: nothing in the game makes half a point yet, and the queue is the same
 code path as Furious Thrust's.
 
+Then Brutal Swing, checked on 2026-11-17 (key presses sent from the page): six dashed tiles
+mark the area, three wide and two ahead, and they swap to the other side when the player
+turns left. With two rats beside the player, both inside the area, key 2 took 40 off the
+target and filled one Rage cell. One hit would only make 0.5c, which does not fill a cell,
+so both rats were hit. Turned away from the rats, key 2 hit nothing, left Rage unchanged and
+still dimmed every slot for the GCD. The console showed no errors or warnings. Not tried in
+the browser: more than five enemies in the area, since a pack has at most four and merging
+two packs takes a long walk. F24 covers it.
+
 ## Not covered yet
 
 - Ranged monsters hold their ground while they can reach the player. Today they chase
   and hit like melee monsters, a temporary stand-in.
-- The rest of the skill kit: Brutal Swing (area builder, facing), Whirling Slash (channel
-  and bleed), the two cooldowns, Sprint, and key rebinding.
+- The rest of the skill kit: Whirling Slash (channel and bleed), the two cooldowns,
+  Sprint, and key rebinding. The tier 1 talent that widens Brutal Swing to three rows.
 - The talents that change Overhead Slam (tier 3a refund, tier 5a crit and 5b bleed bonus)
   and the Slam's interaction with Market Price Rage.
 - The elite and ranged mechanics (spin, pools, volley), and the out-of-combat health

@@ -472,6 +472,42 @@ spec said only "damage scales with the points spent on a smooth curve, numbers T
   may tilt the choice back toward 5c. That tension was already listed under the talent
   tree and is not settled by this curve.
 
+### Brutal Swing in code (2026-11-17)
+
+The area builder is on key 2 (slot 2). It is covered by tests F19–F26 and was checked by
+hand in the browser. The screen shows the six tiles it would hit as a dashed outline, so
+the player can see why facing matters.
+
+- **Area and cap, as the spec had them.** Six tiles: three wide, two rows ahead, in the
+  direction the player faces. At most 5 enemies are hit. Each enemy hit adds 0.5c.
+- **One hit is 40 before armor**, half of Furious Thrust. That is the "AoE efficiency 0.5"
+  from Tier-1 numbers: two enemies hit equal one Furious Thrust in damage and in Rage, which
+  is the break-even point the spec asks for. Five enemies are 200 damage and 2.5c in one GCD.
+- **It always fires** (the author's choice, 2026-11-17). With nobody in the area it hits
+  no one, adds no Rage and still spends the GCD. Every other skill costs nothing when it
+  cannot be used; Brutal Swing has no unusable state, so a wrong facing is paid for with a
+  GCD, which is what gives facing a cost. The alternatives shown were "fires only if at
+  least one enemy is in the area" and "needs the selected target inside the area". No
+  source for either was found: a WoW search on the area builder gave no rule for firing at
+  nothing, so this follows the author's reasoning and not a comparison.
+- **Which five, when six stand in the area** (the author's choice): the selected target
+  first if it is inside the area, then the nearest to the player, then the lower id. Six
+  enemies need all six tiles filled, and monsters cannot share a tile, so this only
+  matters after merging two packs. Enemies killed by the swing still count for Rage. The
+  target moves on only if the target itself died; a swing with no target selected does not
+  select anything.
+- **WoW and Fellowship, as far as searches found:** WoW's Subtlety area builder (Shuriken
+  Storm) makes 1 combo point per target, centered on the caster within 10 yards, so it has
+  no facing; it had a target cap earlier, and now reduces damage past 8 targets (Wowpedia).
+  WoW's cleave-type effects are directional (a community wiki lists a 70° angle centered on
+  the target). A Method guide for Fellowship's Mara recommends her area builder from about 3
+  targets, with the single-target builder for 1 or 2; no Fellowship source on its shape was
+  found. Brutal Swing is closer to a WoW cleave in shape and breaks even at 2 targets, not 3.
+- **Pressing a direction key toward a monster turns the player in place** (already the rule
+  for movement, B4 and B10). Surrounded by chasing monsters, that is how the player aims.
+- **Still open:** the tier-1 talent that widens the area to three rows is not built. No
+  hit feedback yet: nothing on screen shows a swing that missed or how many it hit.
+
 ### Trash mechanics (2026-08-27)
 
 Three of the five mechanics are written. **The two boss mechanics are left
@@ -562,8 +598,8 @@ pass:
 
 ### Tier-1 numbers (2026-09-15, damage 2026-09-26)
 
-None of this has been played. Combat code exists now (2026-11-17) but has two
-skills so far (Furious Thrust and Overhead Slam), so every value below is a starting point for the first real
+None of this has been played. Combat code exists now (2026-11-17) but has three
+skills so far (Furious Thrust, Brutal Swing and Overhead Slam), so every value below is a starting point for the first real
 fights. **What is meant to
 last is the method** — which number anchors the rest and what gets worked
 backwards from what. Values marked *provisional* were set to fill the
@@ -1029,8 +1065,8 @@ Non-blocking:
       2026-11-17, see "Aggro, chase and attacks"
 - [x] **Player auto-attack and click targeting** — built and tested
       2026-11-17, numbers provisional
-- [ ] Skills, Rage and the trash mechanics in code — Furious Thrust, Overhead
-      Slam, the Rage bar and the GCD are built (2026-11-17); Brutal Swing,
+- [ ] Skills, Rage and the trash mechanics in code — Furious Thrust, Brutal
+      Swing, Overhead Slam, the Rage bar and the GCD are built (2026-11-17);
       Whirling Slash, the cooldowns, Sprint and the trash mechanics are not
 - [x] **Trash mechanics** — spin, pools, volley
 - [ ] Names for the thirteen talents (owner: Jihwan)
