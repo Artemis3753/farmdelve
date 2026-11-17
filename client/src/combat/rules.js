@@ -66,9 +66,27 @@ export const QUEUE_WINDOW_TICKS = 3;
 
 // 스킬 표. 피해는 방어력 적용 전의 값이고, rageGain은 분노 단위다(10 = 1c). 숫자는 잠정이다:
 // 1초에 한 번 쓰면 80 + 자동공격 20 = 백로그의 기준 DPS 100이 되도록 맞췄다.
+//
+// 스펜더(spender)는 표에 피해를 적지 않는다. 가진 분노의 정수 포인트를 전부 쓰고, 피해는
+// spenderDamage가 쓴 포인트 수로 계산한다.
 const SKILLS = {
   furiousThrust: { damage: 80, rageGain: 10 },
+  overheadSlam: { spender: true },
 };
+
+export const RAGE_PER_POINT = 10;
+
+// Overhead Slam의 피해 곡선(2026-11-17 합의): 200 × n^0.6, n = 쓴 포인트, 반올림. 포인트를
+// 하나 더 모을 때마다 늘어나는 양이 줄어드는 오목 곡선이다. 사이클 하나는 Furious Thrust n번과
+// 스펜더 1번이라 GCD가 n + 1개 드는데, 그 GCD당 평균 피해가 3c(157)에서 가장 높고 5c(154)는
+// 조금 낮다. 스펙의 "5c까지 모으는 것이 항상 정답이면 안 된다"를 맞추려는 모양이다. 숫자는
+// 잠정이고, 5c 보상 탈렌트(티어 3a, 5a)가 이 차이를 뒤집을지는 아직 열려 있다.
+const SPENDER_BASE_DAMAGE = 200;
+const SPENDER_CURVE_EXPONENT = 0.6;
+
+function spenderDamage(points) {
+  return Math.round(SPENDER_BASE_DAMAGE * Math.pow(points, SPENDER_CURVE_EXPONENT));
+}
 
 // 방향은 문자열로 들고, 움직일 때만 이 표에서 칸 차이를 찾는다. 상태에 객체를
 // 넣으면 { dx: 1, dy: 0 } === { dx: 1, dy: 0 }이 false라 "오른쪽을 보고 있나"를
@@ -363,16 +381,26 @@ function playerAttackStep(state) {
 
 
 // 스킬을 쓴다. 대상이 있고 사거리 1칸 안일 때만 나가고, 못 나가면 상태를 그대로 돌려준다 —
-// 피해도 분노도 GCD도 쓰지 않는다. 나가면 피해를 주고, 분노를 쌓고(최대 5c), GCD를 시작한다.
+// 피해도 분노도 GCD도 쓰지 않는다. 나가면 피해를 주고, 분노를 쌓거나(빌더, 최대 5c) 쓰고
+// (스펜더), GCD를 시작한다. 스펜더는 1c도 없으면 못 쓴다. 0.5c가 남아 있어도 정수 포인트만
+// 쓰고 나머지는 남긴다(백로그: 남은 반 포인트는 다음 빌더가 채운다).
 function castSkill(state, skillId) {
   const skill = SKILLS[skillId];
   const target = state.monsters.find((m) => m.id === state.targetId);
   if (!skill || !target) return state;
   if (distanceBetween(target, state.player) > MELEE_RANGE) return state;
 
+  const points = Math.floor(state.rage / RAGE_PER_POINT);
+  if (skill.spender && points < 1) return state;
+
+  const rawDamage = skill.spender ? spenderDamage(points) : skill.damage;
+  const rage = skill.spender
+    ? state.rage - points * RAGE_PER_POINT
+    : Math.min(RAGE_MAX, state.rage + skill.rageGain);
+
   return {
-    ...hitTarget(state, target, skill.damage),
-    rage: Math.min(RAGE_MAX, state.rage + skill.rageGain),
+    ...hitTarget(state, target, rawDamage),
+    rage,
     gcdReadyTick: state.tick + GCD_TICKS,
   };
 }

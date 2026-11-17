@@ -437,6 +437,40 @@ skill bar and the Rage bar were checked by hand in the browser.
 - **Rage is whole units, capped at 5c, and does not decay.** The backlog has no
   rule for Rage out of combat, so it does not fall for now, and with no spender
   built it simply sits at 5c. Whether Rage should decay out of combat is open.
+  (Overhead Slam now spends it, see below; the decay question is still open.)
+
+### Overhead Slam in code (2026-11-17)
+
+The single-target spender is on key 3 (slot 3, so slot 2 stays empty until Brutal
+Swing). It is covered by tests F11–F18 and was checked by hand in the browser. The
+spec said only "damage scales with the points spent on a smooth curve, numbers TBD".
+
+- **It spends every whole point held and needs at least 1c.** That is the existing
+  rule (spenders consume whole points, a leftover half point stays on the bar). With
+  no target, a target beyond range 1, or under 1c, nothing happens and the GCD is not
+  spent, the same as Furious Thrust. A remembered Slam reads the Rage held when it
+  fires, not when the key was pressed.
+- **Damage is `200 × n^0.6` before armor** for `n` points spent, rounded: 200, 303,
+  387, 459, 525 for 1c to 5c. The curve is concave on purpose: each extra point adds
+  less than the one before.
+- **Why concave.** A cycle of `n` Furious Thrusts and one Slam takes `n + 1` GCDs, so
+  what matters is damage per GCD, `(80n + slam(n)) / (n + 1)`. With this curve that is
+  140, 154, **157**, 156, 154 for 1c to 5c: the best use is around 3c, and waiting for
+  5c costs about 2%. The spec asks that holding for 5c should not always be the right
+  call. A straight line would fail that. WoW's Eviscerate is roughly a base plus a
+  fixed amount per point, and the community analyses found a 5-point finisher is the
+  most efficient one, with 4 points used only to avoid wasting a builder at the cap.
+  The options shown were this curve, a straight line (120 per point, 5c best at 167
+  per GCD) and a square-root curve (2c best at 195, 5c clearly worse); the author
+  chose this one. No Fellowship source on combo-point scaling was found, so that half
+  of the comparison is missing.
+- **Effect on the base DPS.** Pressing only Furious Thrust is still the anchor of 100
+  DPS. A 3c cycle gives about 157 per GCD plus 20 from the auto-attack, about 177 DPS.
+  The numbers are provisional placeholders (the balance numbers are the assistant's
+  recommendation for the author to adjust).
+- **Still open:** the 5c-rewarding talents (tier 3a refund and tier 5a always-crit)
+  may tilt the choice back toward 5c. That tension was already listed under the talent
+  tree and is not settled by this curve.
 
 ### Trash mechanics (2026-08-27)
 
@@ -528,8 +562,8 @@ pass:
 
 ### Tier-1 numbers (2026-09-15, damage 2026-09-26)
 
-None of this has been played. Combat code exists now (2026-11-17) but has one
-skill so far, so every value below is a starting point for the first real
+None of this has been played. Combat code exists now (2026-11-17) but has two
+skills so far (Furious Thrust and Overhead Slam), so every value below is a starting point for the first real
 fights. **What is meant to
 last is the method** — which number anchors the rest and what gets worked
 backwards from what. Values marked *provisional* were set to fill the
@@ -995,8 +1029,8 @@ Non-blocking:
       2026-11-17, see "Aggro, chase and attacks"
 - [x] **Player auto-attack and click targeting** — built and tested
       2026-11-17, numbers provisional
-- [ ] Skills, Rage and the trash mechanics in code — Furious Thrust, the Rage
-      bar and the GCD are built (2026-11-17); Overhead Slam, Brutal Swing,
+- [ ] Skills, Rage and the trash mechanics in code — Furious Thrust, Overhead
+      Slam, the Rage bar and the GCD are built (2026-11-17); Brutal Swing,
       Whirling Slash, the cooldowns, Sprint and the trash mechanics are not
 - [x] **Trash mechanics** — spin, pools, volley
 - [ ] Names for the thirteen talents (owner: Jihwan)

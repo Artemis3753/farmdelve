@@ -850,4 +850,134 @@ describe('combatReducer — skills, Rage and the GCD (seam F)', () => {
     // 틱 21의 두 번째 자동공격까지: 스킬 80 + 자동공격 40 × 2 = 160.
     expect(runTicks(cast, 21).monsters[0].hp).toBe(840)
   })
+
+  // Overhead Slam(2026-11-17 합의). 단일 대상 스펜더: 가진 분노를 정수 포인트만큼 전부 쓰고
+  // 피해는 200 × n^0.6(n = 쓴 포인트, 반올림)이다. 곡선이 오목해서 사이클당 GCD 하나의 평균
+  // 피해는 3c 부근이 가장 높다. 사거리 1칸과 GCD·큐 규칙은 Furious Thrust와 같다.
+  //
+  // 기댓값은 공식이 아니라 손으로 뽑은 표(1c 200, 2c 303, 3c 387, 4c 459, 5c 525)에서 가져온다.
+  const castSlam = (state) => combatReducer(state, { type: 'useSkill', skill: 'overheadSlam' })
+  const withRage = (state, rage) => ({ ...state, rage })
+
+  test('F11: Overhead Slam spends all whole points; damage is 200, 303, 387, 459, 525 for 1c to 5c', () => {
+    // 표의 값: 200 × n^0.6 = 200, 303.15, 386.9, 459.4, 525.3 → 반올림.
+    const table = [
+      { rage: 10, damage: 200 },
+      { rage: 20, damage: 303 },
+      { rage: 30, damage: 387 }, // 386.9 — 내림이면 386
+      { rage: 40, damage: 459 }, // 459.4 — 올림이면 460
+      { rage: 50, damage: 525 }, // 525.3 — 올림이면 526
+    ]
+
+    for (const { rage, damage } of table) {
+      const after = castSlam(withRage(skillReady(), rage))
+      expect(after.monsters[0].hp).toBe(1000 - damage)
+      expect(after.rage).toBe(0)
+    }
+
+    // GCD도 쓴다: 바로 Furious Thrust를 눌러도(10틱 남음, 큐 창 밖) 버려지고, 10틱 뒤에야 나간다.
+    const slammed = castSlam(withRage(skillReady(), 50))
+    const early = castFurious(slammed)
+    expect(early.monsters[0].hp).toBe(475)
+    expect(castFurious(runTicks(slammed, 10)).monsters[0].hp).toBe(395)
+  })
+
+  test('F12: half a point is left behind — 2.5c spends 2c and keeps 0.5c', () => {
+    const after = castSlam(withRage(skillReady(), 25))
+
+    expect(after.monsters[0].hp).toBe(1000 - 303)
+    expect(after.rage).toBe(5)
+  })
+
+  test('F13: with less than 1c nothing happens and the GCD is not spent', () => {
+    const empty = withRage(skillReady(), 0)
+    expect(castSlam(empty)).toEqual(empty)
+
+    const half = withRage(skillReady(), 5)
+    expect(castSlam(half)).toEqual(half)
+
+    // GCD를 안 썼으므로 바로 Furious Thrust가 나간다.
+    expect(castFurious(castSlam(half)).monsters[0].hp).toBe(920)
+  })
+
+  test('F14: with no target, or a target out of range, nothing happens and the Rage is kept', () => {
+    const noTarget = withRage({ ...skillReady(), targetId: null }, 50)
+    expect(castSlam(noTarget)).toEqual(noTarget)
+
+    const farAway = withRage(skillReady(1000, 5, 4), 50)
+    expect(castSlam(farAway)).toEqual(farAway)
+  })
+
+  test('F15: armor cuts the damage and it is rounded — 3c vs 250 gives 310, 1c vs 100 gives 182, 2c vs 300 gives 233', () => {
+    const damageTakenBy = (templateId, rage) => {
+      const base = createInitialState(MONSTERS, [
+        { packNumber: 1, monsterTemplateId: templateId, amount: 1 },
+      ])
+      const state = {
+        ...base,
+        player: { x: 9, y: 4, facing: 'right' },
+        monsters: [{ ...base.monsters[0], hp: 1000, aggro: true, nextAttackTick: 1000 }],
+        targetId: 0,
+        nextPlayerAttackTick: 1000,
+        rage,
+      }
+      return 1000 - castSlam(state).monsters[0].hp
+    }
+
+    // 곡선 값 × (1 − armor / (armor + 1000))를 손으로 계산한 값이다.
+    expect(damageTakenBy(2, 30)).toBe(310) // 387 × 0.8 = 309.6 → 반올림 310 (내림이면 309)
+    expect(damageTakenBy(3, 10)).toBe(182) // 200 × 1000/1100 = 181.82 → 182 (내림이면 181)
+    expect(damageTakenBy(4, 20)).toBe(233) // 303 × 1000/1300 = 233.08 → 233 (올림이면 234)
+  })
+
+  test('F16: the key is remembered in the last 3 ticks of the GCD and spends the Rage held when it fires', () => {
+    // Furious Thrust로 분노가 40에서 50이 되고 GCD는 틱 10까지다.
+    const first = castFurious(withRage(skillReady(), 40))
+    expect(first.rage).toBe(50)
+
+    // 틱 7에 눌러 기억하면 틱 10에 나간다. 틱 9까지는 안 나간다.
+    const queued = castSlam(runTicks(first, 7))
+    expect(runTicks(queued, 2).monsters[0].hp).toBe(920)
+    const fired = runTicks(queued, 3)
+    expect(fired.monsters[0].hp).toBe(920 - 525)
+    expect(fired.rage).toBe(0)
+
+    // 기억해 둔 사이 분노가 줄었다면 누른 때가 아니라 나가는 때의 분노로 쓴다: 3c → 387.
+    expect(runTicks({ ...queued, rage: 30 }, 3).monsters[0].hp).toBe(920 - 387)
+
+    // 나갈 때 1c도 없으면 버려지고 분노는 그대로다.
+    const dropped = runTicks({ ...queued, rage: 5 }, 3)
+    expect(dropped.monsters[0].hp).toBe(920)
+    expect(dropped.rage).toBe(5)
+
+    // 4틱 이상 남았을 때 누른 입력은 버려진다.
+    const tooEarly = castSlam(runTicks(first, 6))
+    expect(runTicks(tooEarly, 4).monsters[0].hp).toBe(920)
+  })
+
+  test('F17: a kill by Overhead Slam removes the monster, spends the Rage and moves the target on', () => {
+    const state = withRage(
+      huntWith([
+        { x: 6, y: 4, hp: 300, aggro: true },
+        { x: 9, y: 4, hp: 100, aggro: true },
+      ]),
+      30,
+    )
+
+    const after = castSlam(state)
+
+    expect(after.monsters).toHaveLength(1)
+    expect(after.targetId).toBe(1)
+    expect(after.rage).toBe(0)
+  })
+
+  test('F18: the auto-attack keeps swinging after Overhead Slam', () => {
+    // 자동공격을 켠 상태(타이머 0). 5c 스펜더 525, 1틱 뒤 자동공격 40.
+    const state = withRage({ ...skillReady(), nextPlayerAttackTick: 0 }, 50)
+    const cast = castSlam(state)
+
+    expect(runTicks(cast, 1).monsters[0].hp).toBe(1000 - 525 - 40)
+    // 틱 21의 두 번째 자동공격까지: 스펜더 525 + 자동공격 40 × 2.
+    expect(runTicks(cast, 21).monsters[0].hp).toBe(1000 - 525 - 80)
+  })
 })

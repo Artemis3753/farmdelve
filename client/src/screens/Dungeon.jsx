@@ -14,6 +14,7 @@ import {
   CORRIDOR_HEIGHT,
   CORRIDOR_LENGTH,
   QUEUE_WINDOW_TICKS,
+  RAGE_PER_POINT,
   TICKS_PER_SECOND,
 } from '../combat/rules.js'
 
@@ -23,14 +24,14 @@ const VIEW_WIDTH = 17
 
 const SKILL_SLOTS = [1, 2, 3, 4, 5, 6, 7]
 
-// 칸 번호 → 그 칸에 놓인 스킬. 지금은 1번 칸의 Furious Thrust 하나뿐이고 나머지는 비어 있다.
+// 칸 번호 → 그 칸에 놓인 스킬. 스펙의 번호를 그대로 쓰므로 2번(Brutal Swing) 칸은 아직 비어 있다.
 // 칸에 마우스를 올리면 이름이 보이게 title로 쓴다.
-const SLOT_SKILLS = { 1: 'furiousThrust' }
-const SKILL_LABELS = { furiousThrust: 'Furious Thrust' }
+const SLOT_SKILLS = { 1: 'furiousThrust', 3: 'overheadSlam' }
+const SKILL_LABELS = { furiousThrust: 'Furious Thrust', overheadSlam: 'Overhead Slam' }
 
 // 키 → 스킬 id. 방향 키와 같은 이유로 event.code(Digit1)를 쓴다. 키 재설정은 이 표를 바꾸는
 // 방식으로 붙일 수 있다(칸 번호와 키를 하나로 묶지 않은 까닭이다).
-const KEY_SKILLS = { Digit1: 'furiousThrust' }
+const KEY_SKILLS = { Digit1: 'furiousThrust', Digit3: 'overheadSlam' }
 
 // 키 → 방향. 방향키와 WASD를 같이 받는다. event.key가 아니라 event.code("KeyW")를
 // 쓰는 것은, 한글 입력 상태에서는 W를 눌러도 event.key가 'ㅈ'이 되기 때문이다.
@@ -261,6 +262,8 @@ function DungeonRun({ templates, onLeave, onRetry }) {
             let className = 'skill-key'
             if (skill) className += ' skill-key-bound'
             if (skill && state.gcdReadyTick - state.tick > QUEUE_WINDOW_TICKS) className += ' skill-key-gcd'
+            // 스펜더는 분노가 1c도 없으면 눌러도 나가지 않으므로, GCD와 상관없이 어둡게 한다.
+            if (skill === 'overheadSlam' && state.rage < RAGE_PER_POINT) className += ' skill-key-gcd'
 
             return (
               <li key={n} className={className} title={skill ? SKILL_LABELS[skill] : undefined}>

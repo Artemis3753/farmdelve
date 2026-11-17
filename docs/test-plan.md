@@ -12,14 +12,14 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   player's auto-attack, targets and kills (seam E), and skills, Rage and the GCD
   (seam F). The screen (`Dungeon.jsx`) is not a seam: it is a thin layer that
   dispatches actions and draws the state, and it was checked by hand in the browser.
-- **Every case below was approved by the author** before it was written, in six
+- **Every case below was approved by the author** before it was written, in seven
   rounds on 2026-11-17: A1–A5 and B1–B7, then the movement rule change (B1, B5–B7
   edits, B8–B10), then aggro (C1–C7), then monster attacks (D1–D6, plus edits to A1,
   A5 and B7), then the player's attacks (E1–E9, plus edits to A1, A5 and B7), then
-  skills (F1–F10, plus edits to A5 and B7). No test is written outside the list. The
-  extensions after approval are in E6, which gained two more armor values to pin the
-  rounding rule, and in F5 and F9, which gained one more assertion each to close gaps
-  the mutation check found.
+  skills (F1–F10, plus edits to A5 and B7), then Overhead Slam (F11–F18). No test is
+  written outside the list. The extensions after approval are in E6, which gained two
+  more armor values to pin the rounding rule, and in F5 and F9, which gained one more
+  assertion each to close gaps the mutation check found.
 - **The test code was written by Claude** from that list.
 - **The rule changes were decided by the author**: a key press steps at once, the
   aggro rules, the attack rules, and the targeting rules below. Claude changed
@@ -29,12 +29,13 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 
 - A1–A5 and B1–B7 are **characterization tests**: `rules.js` already existed, so
   they passed the first time they ran. They are not test-first development.
-- B8–B10, C1–C7, D1–D6, E1–E9 and F1–F10 were **red before the implementation**,
-  except C7, E4, E9, F2 and F9, which also passed before the implementation because
-  nothing moved, hit, could be selected or could be cast yet, so "nothing overlaps",
-  "nobody is hit without a target", "a defeated player cannot select", "a failed press
-  does nothing" and "a defeated player cannot cast" held trivially. They earn their
-  place through the mutation check below.
+- B8–B10, C1–C7, D1–D6, E1–E9 and F1–F18 were **red before the implementation**,
+  except C7, E4, E9, F2, F9, F13 and F14, which also passed before the implementation
+  because nothing moved, hit, could be selected or could be cast yet (an unknown skill
+  is ignored), so "nothing overlaps", "nobody is hit without a target", "a defeated
+  player cannot select", "a failed press does nothing", "a defeated player cannot cast",
+  "a spender with under 1c does nothing" and "a slam with no target or out of range does
+  nothing" held trivially. They earn their place through the mutation check below.
 - Expected values are written by hand from the rules in
   [design-backlog.md](design-backlog.md) (nine tiles tall, 2 tiles per second,
   packs 10 tiles apart, aggro radius 5, auto-attack every 2 seconds, armor
@@ -113,9 +114,9 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 
 ## Skill, Rage and GCD rules (decided 2026-11-17)
 
-- **First slice: Furious Thrust only**, the single-target builder on key 1. The spender
-  (Overhead Slam) and the area skills come in later slices, so Rage fills up to 5c and
-  stays there for now.
+- **Two skills so far:** Furious Thrust, the single-target builder on key 1, and
+  Overhead Slam, the single-target spender on key 3. The area skills (Brutal Swing,
+  Whirling Slash) come in later slices, and slot 2 stays empty until Brutal Swing.
 - **Furious Thrust** needs the primary target inside range 1 (diagonals included), hits
   it for 80 before armor, and adds 1c of Rage. Skills cost no resource. Rage is stored in
   whole units (1c = 10, maximum 5c = 50), as the spec note says, so 0.5c never needs a
@@ -134,10 +135,27 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   out of range): it is dropped and the GCD is not spent.
 - **Within one tick:** monsters hit, then a remembered skill fires, then the
   auto-attack swings. A player killed by the monsters that tick casts nothing.
-- **The damage number is fitted to the backlog's anchor**: 80 per second from the skill
-  plus 20 per second from the auto-attack is the base DPS of 100, which kills one
+- **The Furious Thrust number is fitted to the backlog's anchor**: 80 per second from the
+  skill plus 20 per second from the auto-attack is the base DPS of 100, which kills one
   1000-health rat in 10 seconds, matching the swarm phase in Tier-1 numbers. It is
-  provisional until the spender and the area builder exist.
+  provisional until the area builder exists.
+- **Overhead Slam** (decided 2026-11-17) needs the same things as Furious Thrust: a
+  target inside range 1, a free GCD or the 3-tick window. It spends **all the whole
+  points** held and needs at least 1c. Holding 2.5c spends 2c and keeps 0.5c. Damage
+  before armor is `200 × n^0.6` for `n` points spent, rounded: 200, 303, 387, 459, 525
+  for 1c to 5c. A remembered Slam reads the Rage held when it fires, not when the key
+  was pressed. With under 1c, no target, or a target out of range, nothing happens
+  (no damage, no Rage spent, no GCD).
+- **Why the curve bends**: a cycle of `n` Furious Thrusts and one Slam takes `n + 1`
+  GCDs, so damage per GCD is `(80n + slam(n)) / (n + 1)`. With this curve that is 140,
+  154, 157, 156, 154 for 1c to 5c: the best use is around 3c, and holding for 5c is
+  slightly worse. A straight line (WoW's Eviscerate shape, where 5c is the most
+  efficient and 4c is only for avoiding overcap) would make 5c always right, which the
+  spec forbids. The bend is a design choice with no WoW or Fellowship source behind it.
+  The numbers are provisional, and the tier 3a and 5a talents that reward 5c may tilt
+  the choice back toward 5c.
+- **Effect on the anchor**: pressing only Furious Thrust is still 100 DPS. A 3c cycle
+  gives about 157 per GCD plus 20 from the auto-attack, about 177 DPS.
 
 ## Cases
 
@@ -213,10 +231,18 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 | F4 | A press in the last 3 ticks is remembered and cast when the GCD ends; a press 4 ticks before the end is dropped; mashing the key casts once | Tick-sized timing and browser jitter would otherwise swallow slightly early presses | Whether 3 ticks (0.3 s) feels right |
 | F5 | A remembered skill is dropped if it cannot be used when the GCD ends, the GCD is not spent, and the dropped press does not fire later | A stale press must not fire at a surprising moment | — |
 | F6 | Armor cuts skill damage and the result is rounded: 0 → 80, 250 → 64, 100 → 73, 500 → 53 | Skills and auto-attacks share one armor rule | Bleeds, which ignore armor (not built) |
-| F7 | Rage stops at 5c | The bar has five cells, and no spender exists yet | What spending does |
+| F7 | Rage stops at 5c | The bar has five cells | — (spending is F11–F17) |
 | F8 | A kill by skill removes the monster and moves the target on | Skills end fights too | — |
 | F9 | A defeated player cannot use skills, and a remembered skill does not fire on the tick the player dies | Nothing may keep happening to a dead player | — |
 | F10 | The auto-attack keeps swinging during the GCD | The spec says the auto-attack costs no button and no GCD | — |
+| F11 | Overhead Slam spends all whole points and deals 200, 303, 387, 459, 525 for 1c to 5c; it spends the GCD | The curve is the design decision of this slice; the values are hand-computed, and 387, 459 and 525 tell rounding from flooring and ceiling | Whether the curve feels right |
+| F12 | 2.5c spends 2c, deals 303 and leaves 0.5c | The spec says leftover half points stay on the bar | Nothing yet makes half points in the game (Brutal Swing is not built) |
+| F13 | With under 1c (0 or 0.5c) nothing happens, and the GCD is not spent | A failed press must not cost the player a second of GCD | — |
+| F14 | With no target, or a target out of range, nothing happens and the Rage is kept | A failed press must not waste the points the player built | — |
+| F15 | Armor cuts the damage and it is rounded: 3c vs 250 armor gives 310, 1c vs 100 gives 182, 2c vs 300 gives 233 | The Slam shares the armor rule; each value separates rounding from flooring or ceiling | — |
+| F16 | A key press in the last 3 ticks of the GCD is remembered and spends the Rage held when it fires; with under 1c at that moment it is dropped; an earlier press is dropped | The queue must work for the spender, whose result depends on the Rage at fire time | — |
+| F17 | A kill by Slam removes the monster, spends the Rage and moves the target on | Spenders end fights too | — |
+| F18 | The auto-attack keeps swinging after a Slam | The auto-attack uses no button and no GCD | — |
 
 ## Movement rule change (2026-11-17)
 
@@ -229,9 +255,12 @@ fields to monsters and to the state changed A1's expected object and A5.
 ## Mutation check
 
 Each rule in `rules.js` was broken on purpose, one at a time, and the suite was
-re-run to confirm a test fails. All 93 breakages below were caught on the final code
-(three of them are the rounding variants in one row, so the table has 91 rows), and
-`rules.js` was restored afterwards.
+re-run to confirm a test fails. All 93 breakages in the first part of the table were
+caught on the code before Overhead Slam (three of them are the rounding variants in one
+row, so that part has 91 rows). The Overhead Slam slice added 21 more breakages, listed
+after the table: 16 new rows and 5 re-runs of existing rows against the changed
+`castSkill`. All 114 were caught, and `rules.js` was restored afterwards. The test lists
+in the first 91 rows are from before the Slam tests existed, so they do not name F11–F18.
 
 Along the way, several breakages first appeared to survive. Some were mistakes in the
 breaking script (a syntax error, or a pattern that did not apply), not real survivors.
@@ -340,6 +369,31 @@ dropped press does not fire later.
 | A skill is remembered from the start | A5, E2, E3, E6, E7, F3, F4, F10 |
 | Skill hits without a target | F2, F5 |
 
+Added with Overhead Slam (16 new rows):
+
+| Breakage | Caught by |
+|----------|-----------|
+| Slam base damage 200 → 199 | F11, F12, F15, F16, F18 |
+| Slam curve exponent 0.6 → 0.7 | F11, F12, F15, F16, F18 |
+| Slam curve exponent 0.6 → 0.5 | F11, F12, F15, F16, F18 |
+| Slam curve rounded down | F11, F15, F16 |
+| Slam curve rounded up | F11, F12, F15, F16, F18 |
+| Slam curve not rounded | F15 (only through armor: the hit rounds again, so without armor it is invisible) |
+| Points counted with round instead of floor | F12, F13, F16 |
+| Points counted with ceil instead of floor | F12, F13, F16 |
+| One point = 5 Rage units instead of 10 | F11, F12, F13, F15, F16, F18 |
+| Slam allowed with 0 points | F13 |
+| Slam needs 2 points | F11, F15 |
+| Slam with under 1c is not refused | F13 |
+| Slam spends no Rage | F11, F12, F16, F17 |
+| Slam spends all Rage, half point included | F12 |
+| Slam spends one point only | F11, F12, F16, F17 |
+| Slam treated as a builder (80 damage, +1c) | F11, F12, F13, F15, F16, F17, F18 |
+
+Re-runs against the changed `castSkill`, each still caught: Rage not capped (F7), Rage
+gain 1c → 2c (F1, F5), Furious Thrust damage 80 → 79 (F1, F3–F6, F8, F10, F11, F13, F16),
+no GCD on a cast (F3, F4, F5, F11, F16), and the range check removed (E5, F2, F14).
+
 This shows the suite notices these breakages. It does not show that the rules are
 complete.
 
@@ -362,13 +416,22 @@ after the GCD ended, pressing 0.15 s after it lit was 10–14% slower than mashi
 s per cast), so the slot now lights 3 ticks early, when a press is accepted, and the two
 match (about 1.0 s per cast).
 
+Then Overhead Slam, checked on 2026-11-17 (key presses sent from the page, not typed):
+slot 3 is dim with no Rage and lights when 1c is held; pressing 3 with 0 Rage does nothing
+(no damage, no GCD); after three Furious Thrusts (3c) the rat went from 440 to 53, exactly
+the 387 of the table, Rage fell to 0 and slot 3 dimmed again; the console showed no errors
+or warnings after a reload. The half-point case (F12) and the queued Slam (F16) were not
+tried in the browser: nothing in the game makes half a point yet, and the queue is the same
+code path as Furious Thrust's.
+
 ## Not covered yet
 
 - Ranged monsters hold their ground while they can reach the player. Today they chase
   and hit like melee monsters, a temporary stand-in.
-- The rest of the skill kit: Overhead Slam (spender), Brutal Swing (area builder, facing),
-  Whirling Slash (channel and bleed), the two cooldowns, Sprint, and key rebinding. Rage
-  has nothing to spend on yet.
+- The rest of the skill kit: Brutal Swing (area builder, facing), Whirling Slash (channel
+  and bleed), the two cooldowns, Sprint, and key rebinding.
+- The talents that change Overhead Slam (tier 3a refund, tier 5a crit and 5b bleed bonus)
+  and the Slam's interaction with Market Price Rage.
 - The elite and ranged mechanics (spin, pools, volley), and the out-of-combat health
   regeneration in the backlog.
 - Run goals: clearing packs, the boss, rewards and the timer.
