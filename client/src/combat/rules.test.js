@@ -12,9 +12,14 @@ import { combatReducer, createInitialState } from './rules.js'
 //
 // autoAttack은 한 번에 주는 피해, autoAttackSeconds는 공격 간격(초)이다. 숫자는 일부러
 // 실제 시드와 다르게(10, 20) 두어 코드가 템플릿 값을 그대로 쓰는지 볼 수 있게 한다.
+//
+// armor는 몬스터 방어력이다. 1번(쥐)은 0, 2번(엘리트)은 백로그의 250이다.
 const MONSTERS = [
-  { monsterTemplateId: 1, hp: 30, autoAttack: 10, autoAttackSeconds: 2 },
-  { monsterTemplateId: 2, hp: 80, autoAttack: 20, autoAttackSeconds: 2 },
+  { monsterTemplateId: 1, hp: 30, armor: 0, autoAttack: 10, autoAttackSeconds: 2 },
+  { monsterTemplateId: 2, hp: 80, armor: 250, autoAttack: 20, autoAttackSeconds: 2 },
+  // 3번과 4번은 방어력 감소가 정수로 딱 떨어지지 않는 경우(반올림 확인용)이다.
+  { monsterTemplateId: 3, hp: 80, armor: 100, autoAttack: 20, autoAttackSeconds: 2 },
+  { monsterTemplateId: 4, hp: 80, armor: 300, autoAttack: 20, autoAttackSeconds: 2 },
 ]
 
 // 몬스터가 없는 빈 복도. 이동 규칙만 볼 때 쓴다. 플레이어는 (0, 4)에서 시작한다.
@@ -69,6 +74,7 @@ describe('createInitialState — initial layout (seam A)', () => {
         x: 20,
         y: 4,
         hp: 30,
+        armor: 0,
         aggro: false,
         attackDamage: 10,
         attackTicks: 20,
@@ -129,6 +135,9 @@ describe('createInitialState — initial layout (seam A)', () => {
     expect(state.playerHp).toBe(1000)
     expect(state.playerMaxHp).toBe(1000)
     expect(state.defeated).toBe(false)
+    // 대상은 아직 없고, 플레이어의 첫 공격 시각 0은 "처음부터 칠 수 있다"는 뜻이다.
+    expect(state.targetId).toBeNull()
+    expect(state.nextPlayerAttackTick).toBe(0)
   })
 })
 
@@ -246,6 +255,19 @@ describe('combatReducer — movement (seam B)', () => {
     const attacking = deepFreeze({ ...chasing, player: { x: 9, y: 4, facing: 'right' } })
     const dying = deepFreeze({ ...attacking, playerHp: 5 })
     const defeated = deepFreeze({ ...attacking, playerHp: 0, defeated: true })
+    // 대상을 때리는 경로(hunting)와 처치하는 경로(killing)도 지나게 한다.
+    // hunting은 hp가 높아 맞고도 살아남는 경로, killing은 한 방에 죽는 경로다. 몬스터의 다음
+    // 공격 시각을 멀리(1000) 두어 이번 틱에는 몬스터가 안 때리게 한다 — 때리면 몬스터 객체가 먼저
+    // 복사되어, 플레이어 공격이 얼린 원본을 고치는지 확인할 수 없다.
+    const hunting = deepFreeze({
+      ...attacking,
+      targetId: 0,
+      monsters: attacking.monsters.map((m) => ({ ...m, hp: 100, nextAttackTick: 1000 })),
+    })
+    const killing = deepFreeze({
+      ...hunting,
+      monsters: hunting.monsters.map((m) => ({ ...m, hp: 10 })),
+    })
     const actions = [
       { type: 'tick' },
       { type: 'moveStart', direction: 'left' },
@@ -254,10 +276,13 @@ describe('combatReducer — movement (seam B)', () => {
       { type: 'moveStart', direction: 'down' },
       { type: 'moveStop', direction: 'right' },
       { type: 'moveStop', direction: 'up' },
+      { type: 'selectTarget', monsterId: 0 },
+      { type: 'selectTarget', monsterId: 99 },
       { type: 'somethingUnknown' },
     ]
 
-    for (const state of [walking, blocked, pulling, chasing, attacking, dying, defeated]) {
+    const states = [walking, blocked, pulling, chasing, attacking, dying, defeated, hunting, killing]
+    for (const state of states) {
       const snapshot = structuredClone(state)
       for (const action of actions) {
         // 얼린 객체를 고치면 TypeError가 나서 여기서 실패한다.
@@ -499,5 +524,159 @@ describe('combatReducer — monster attacks and defeat (seam D)', () => {
     expect(combatReducer(dead, { type: 'moveStart', direction: 'left' })).toBe(dead)
     expect(combatReducer(dead, { type: 'moveStop', direction: 'left' })).toBe(dead)
     expect(runTicks(dead, 100)).toEqual(dead)
+  })
+})
+
+
+// 플레이어 자동공격, 대상 선택, 처치. 규칙(백로그·spec-note + 2026-11-17 합의): 주 대상 한
+// 마리만 사거리 1칸 안에서 2초(20틱)마다 40 피해(방어력 적용, 반올림)를 준다. 첫 공격은
+// 사거리에 닿는 즉시이고 타이머는 사거리 밖에서도 흐른다. 한 틱 안에서는 몬스터 공격이 먼저,
+// 플레이어 공격이 나중이다. hp가 0 이하면 몬스터는 사라지고, 대상이었다면 어그로 붙은
+// 몬스터 중 가장 가까운 것이 새 대상이 된다(동률은 id가 낮은 것, 없으면 대상 없음).
+//
+// 피해 40과 방어력 감소(250 → 20%)는 백로그 공식 armor / (armor + 1000)에서 손으로 뽑았다.
+
+// 1번 팩 몬스터 한 마리(hp)를 대상으로 잡은 상태. 플레이어는 (x, y)에 선다.
+function huntingOne(hp, x, y) {
+  const base = packOneWithPlayerAt(1, x, y)
+  return { ...base, monsters: [{ ...base.monsters[0], hp }], targetId: 0 }
+}
+
+// 플레이어를 (5, 4)에 세우고 몬스터를 specs대로 놓은 상태. 0번 몬스터가 대상이다.
+// specs의 각 칸은 그 몬스터에 덮어쓸 값(x, y, hp, aggro, packNumber)이다.
+function huntWith(specs) {
+  const base = createInitialState(MONSTERS, [
+    { packNumber: 1, monsterTemplateId: 1, amount: specs.length },
+  ])
+  return {
+    ...base,
+    player: { x: 5, y: 4, facing: 'right' },
+    targetId: 0,
+    monsters: base.monsters.map((m, i) => ({ ...m, ...specs[i] })),
+  }
+}
+
+describe('combatReducer — player auto-attack, targeting and kills (seam E)', () => {
+  test('E1: selecting a monster targets it, selecting it again clears it, unknown ids are ignored', () => {
+    // 몬스터는 10칸 밖이다. 선택은 거리와 상관없이 된다(사거리는 때릴 때만 따진다).
+    const state = packOneWithPlayerAt(1, 0, 4)
+
+    const selected = combatReducer(state, { type: 'selectTarget', monsterId: 0 })
+    expect(selected.targetId).toBe(0)
+
+    expect(combatReducer(selected, { type: 'selectTarget', monsterId: 0 }).targetId).toBeNull()
+    expect(combatReducer(state, { type: 'selectTarget', monsterId: 99 })).toBe(state)
+  })
+
+  test('E2: the target takes 40 on the first tick in range, then 40 every 20 ticks', () => {
+    // 몬스터 hp 100, 방어력 0. 곁에 붙어 있다.
+    const state = huntingOne(100, 9, 4)
+
+    expect(runTicks(state, 1).monsters[0].hp).toBe(60)
+    expect(runTicks(state, 20).monsters[0].hp).toBe(60)
+    expect(runTicks(state, 21).monsters[0].hp).toBe(20)
+  })
+
+  test('E3: only the target is hit, not the monster standing next to it', () => {
+    const state = huntWith([
+      { x: 6, y: 4, hp: 100, aggro: true },
+      { x: 6, y: 3, hp: 100, aggro: true },
+    ])
+    // 1번 몬스터를 대상으로 바꾼다.
+    const aimed = { ...state, targetId: 1 }
+
+    expect(runTicks(aimed, 1).monsters.map((m) => m.hp)).toEqual([100, 60])
+  })
+
+  test('E4: with no target nobody is hit, even when a monster stands right there', () => {
+    const state = { ...huntingOne(100, 9, 4), targetId: null }
+
+    expect(runTicks(state, 25).monsters[0].hp).toBe(100)
+  })
+
+  test('E5: a target is hit the tick it reaches range, and the swing timer runs while it walks', () => {
+    // 몬스터가 (10, 4)에서 20틱에 곁에 온다(D1과 같은 배치).
+    const state = huntingOne(100, 5, 4)
+    expect(runTicks(state, 19).monsters[0].hp).toBe(100)
+    expect(runTicks(state, 20).monsters[0].hp).toBe(60)
+
+    // 마지막 공격 뒤 다음 공격 시각이 30틱이면, 곁에 와도 30틱이 되기 전에는 안 때린다.
+    const recentlySwung = { ...state, nextPlayerAttackTick: 30 }
+    expect(runTicks(recentlySwung, 29).monsters[0].hp).toBe(100)
+    expect(runTicks(recentlySwung, 30).monsters[0].hp).toBe(60)
+  })
+
+  test('E6: armor cuts the damage and the result is rounded — 250 gives 32, 100 gives 36, 300 gives 31', () => {
+    // 해당 템플릿의 몬스터(hp 100)를 곁에 세우고 대상으로 잡아 첫 틱에 입는 피해를 돌려준다.
+    const damageTakenBy = (templateId) => {
+      const base = createInitialState(MONSTERS, [
+        { packNumber: 1, monsterTemplateId: templateId, amount: 1 },
+      ])
+      const state = {
+        ...base,
+        player: { x: 9, y: 4, facing: 'right' },
+        monsters: [{ ...base.monsters[0], hp: 100 }],
+        targetId: 0,
+      }
+      return 100 - runTicks(state, 1).monsters[0].hp
+    }
+
+    // 40 × (1 − armor / (armor + 1000))를 손으로 계산한 값이다.
+    expect(damageTakenBy(1)).toBe(40) // 방어력 0
+    expect(damageTakenBy(2)).toBe(32) // 방어력 250: 정확히 32
+    expect(damageTakenBy(3)).toBe(36) // 방어력 100: 36.36 → 반올림 36 (올림이면 37)
+    expect(damageTakenBy(4)).toBe(31) // 방어력 300: 30.77 → 반올림 31 (내림이면 30)
+  })
+
+  test('E7: a monster at 0 health or below is removed', () => {
+    // 정확히 40(= 한 방)과 그보다 적은 hp(초과 피해) 둘 다 사라진다.
+    expect(runTicks(huntingOne(40, 9, 4), 1).monsters).toHaveLength(0)
+    expect(runTicks(huntingOne(10, 9, 4), 1).monsters).toHaveLength(0)
+    // 41이면 한 방에는 안 죽는다.
+    expect(runTicks(huntingOne(41, 9, 4), 1).monsters).toHaveLength(1)
+  })
+
+  test('E8: when the target dies, the nearest aggroed monster becomes the target', () => {
+    // 대상(0번)은 hp 10이라 첫 틱에 죽는다. 남은 것 중 어그로 붙은 가장 가까운 것이 새 대상이다.
+    // (a) 2번이 거리 2, 1번이 거리 4 → 2번.
+    const nearest = huntWith([
+      { x: 6, y: 4, hp: 10, aggro: true },
+      { x: 9, y: 4, hp: 100, aggro: true },
+      { x: 7, y: 4, hp: 100, aggro: true },
+    ])
+    expect(runTicks(nearest, 1).targetId).toBe(2)
+
+    // (b) 둘 다 거리 2로 같으면 id가 낮은 1번.
+    const tie = huntWith([
+      { x: 6, y: 4, hp: 10, aggro: true },
+      { x: 7, y: 3, hp: 100, aggro: true },
+      { x: 7, y: 5, hp: 100, aggro: true },
+    ])
+    expect(runTicks(tie, 1).targetId).toBe(1)
+
+    // (c) 어그로 없는 몬스터(2번 팩, 거리 7)가 더 가까워도 뽑지 않고, 멀리서 쫓아오는
+    // 어그로 몬스터(거리 20)를 뽑는다.
+    const ignoresIdle = huntWith([
+      { x: 6, y: 4, hp: 10, aggro: true },
+      { x: 25, y: 4, hp: 100, aggro: true },
+      { x: 12, y: 4, hp: 100, aggro: false, packNumber: 2 },
+    ])
+    expect(runTicks(ignoresIdle, 1).targetId).toBe(1)
+
+    // (d) 어그로 붙은 몬스터가 없으면 대상 없음.
+    const none = huntWith([
+      { x: 6, y: 4, hp: 10, aggro: true },
+      { x: 12, y: 4, hp: 100, aggro: false, packNumber: 2 },
+    ])
+    expect(runTicks(none, 1).targetId).toBeNull()
+  })
+
+  test('E9: a defeated player cannot select targets or swing, even on the tick that kills them', () => {
+    const dead = runTicks({ ...packOneWithPlayerAt(1, 9, 4), playerHp: 10 }, 1)
+    expect(combatReducer(dead, { type: 'selectTarget', monsterId: 0 })).toBe(dead)
+
+    // 몬스터의 공격으로 이번 틱에 죽으면, 같은 틱의 플레이어 공격은 나가지 않는다.
+    const dying = { ...huntingOne(100, 9, 4), playerHp: 10 }
+    expect(runTicks(dying, 1).monsters[0].hp).toBe(100)
   })
 })

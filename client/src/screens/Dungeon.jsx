@@ -120,8 +120,13 @@ function DungeonRun({ templates, onLeave, onRetry }) {
     }
   }, [])
 
-  const nameOf = (monster) =>
-    templates.monsters.find((t) => t.monsterTemplateId === monster.monsterTemplateId).name
+  const templateOf = (monster) =>
+    templates.monsters.find((t) => t.monsterTemplateId === monster.monsterTemplateId)
+  const nameOf = (monster) => templateOf(monster).name
+
+  // 선택된 대상. 죽었거나 고른 적이 없으면 undefined다. 체력 최대치는 상태에 없고 템플릿에 있다
+  // (상태의 hp는 지금 남은 값이다).
+  const target = state.monsters.find((m) => m.id === state.targetId)
 
   // 카메라. 화면 맨 왼쪽 칸이 복도의 몇 번째 칸(x)인가.
   //
@@ -150,12 +155,20 @@ function DungeonRun({ templates, onLeave, onRetry }) {
       let className = 'tile'
       if (!inside) className += ' tile-void'
       if (monster) className += ' tile-monster'
+      if (monster && monster.id === state.targetId) className += ' tile-target'
       if (isPlayer) className += ' tile-player'
 
       tiles.push(
         // key는 복도 좌표(x)가 아니라 화면 좌표(col)다. 걸으면 x는 전부 바뀌지만
         // 화면의 153칸은 그대로라, React가 같은 칸을 재사용하고 내용만 갈아끼운다.
-        <div key={`${col},${y}`} className={className}>
+        //
+        // 몬스터 칸을 누르면 자동공격 대상으로 고른다(같은 칸을 다시 누르면 해제). 선택이
+        // 일어나는 곳은 규칙서다 — 여기는 "이 몬스터를 골랐다"고 알리기만 한다.
+        <div
+          key={`${col},${y}`}
+          className={className}
+          onClick={monster ? () => dispatch({ type: 'selectTarget', monsterId: monster.id }) : undefined}
+        >
           {isPlayer && <Icon of="head" className="tile-icon" />}
           {/* 몬스터 아이콘은 아직 없다. 이름 첫 글자(F·T·B·S)로 구분한다. */}
           {monster && <span title={nameOf(monster)}>{nameOf(monster)[0]}</span>}
@@ -176,6 +189,14 @@ function DungeonRun({ templates, onLeave, onRetry }) {
         <span>10:00</span>
         <span>Pulls 0 / 5</span>
         <span>HP {state.playerHp} / {state.playerMaxHp}</span>
+      </section>
+
+      <section className="dungeon-header">
+        <span>
+          {target
+            ? `Target: ${nameOf(target)} ${target.hp} / ${templateOf(target).hp}`
+            : 'No target — click a monster'}
+        </span>
       </section>
 
       {/* 백로그: 죽으면 "Try again"만 보여 주고 페널티는 없다. 나가기는 위의 Abandon run이다. */}

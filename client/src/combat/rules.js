@@ -38,6 +38,19 @@ const MELEE_RANGE = 1;
 // 더해진 값이 되겠지만, 장비 연결 전이라 상수로 둔다.
 const PLAYER_MAX_HP = 1000;
 
+// 플레이어 자동공격(2026-11-17, 숫자는 전부 잠정이고 나중에 조정한다). 백로그는 "무기 종류의
+// 고정 속도, medium"이라고만 하고 값을 정하지 않았다.
+//
+// 한 번에 주는 피해 = 공격력 × 계수. 공격력 10은 시작 낫의 자리표시 값(백로그 Still open)이다.
+// 스킬이 붙기 전이라 자동공격만으로 쥐 한 마리(hp 1000)를 잡는 데 50초가 걸린다.
+const PLAYER_ATTACK_POWER = 10;
+const AUTO_ATTACK_COEFFICIENT = 4;
+const PLAYER_ATTACK_TICKS = 2 * TICKS_PER_SECOND;
+
+// 방어력 → 피해 감소율은 armor / (armor + ARMOR_K)(백로그 Stats). 나눗셈이라 100%에
+// 닿지 않는다.
+const ARMOR_K = 1000;
+
 // 방향은 문자열로 들고, 움직일 때만 이 표에서 칸 차이를 찾는다. 상태에 객체를
 // 넣으면 { dx: 1, dy: 0 } === { dx: 1, dy: 0 }이 false라 "오른쪽을 보고 있나"를
 // ===로 물을 수 없다. y는 아래로 갈수록 커진다 — 화면 좌표와 같은 방향이다.
@@ -92,6 +105,7 @@ export function createInitialState(monsters, packs) {
         x: row.packNumber * PACK_SPACING + FORMATION[slot].dx,
         y: Math.floor(CORRIDOR_HEIGHT / 2) + FORMATION[slot].dy,
         hp: template.hp,
+        armor: template.armor,
         // 어그로가 붙었는가. 한 번 붙으면 풀리지 않는다(leash 없음, 2026-11-17).
         aggro: false,
         // 템플릿의 자동공격 값을 개체에 복사해 둔다(hp와 같은 방식). 간격은 초를 틱으로
@@ -111,6 +125,11 @@ export function createInitialState(monsters, packs) {
     playerMaxHp: PLAYER_MAX_HP,
     // 체력이 0이 되면 true. 그 뒤로는 전투가 멈춘다(백로그: 죽으면 "try again"만).
     defeated: false,
+    // 자동공격 대상(몬스터 id). 없으면 null. 플레이어가 클릭으로 고르고, 대상이 죽으면 규칙이
+    // 다음 대상을 고른다.
+    targetId: null,
+    // 플레이어의 다음 공격 시각. 0은 "처음부터 칠 수 있다"는 뜻이다.
+    nextPlayerAttackTick: 0,
     // 복도 왼쪽 끝, 세로 가운데에서 출발한다. 1번 팩(x = 10)까지 어그로 반경
     // 5칸을 빼면 다섯 칸을 걸어야 첫 싸움이 붙는다.
     player: { x: 0, y: Math.floor(CORRIDOR_HEIGHT / 2), facing: 'right' },
@@ -260,16 +279,72 @@ function attackStep(state) {
 }
 
 
-// 시간이 한 틱 흐른 뒤 몬스터 쪽에서 일어나는 일: 어그로를 붙이고, 5틱 박자에는 걷고,
-// 사거리 안이면 때린다(이 순서).
+// 어그로가 붙은 몬스터 중 플레이어에게 가장 가까운 것의 id. 없으면 null.
+// 거리가 같으면 id가 낮은 쪽이다 — 같은 입력이 언제나 같은 대상을 고르게 하려는 것이다.
+// 어그로 없는 몬스터는 고르지 않는다. 아직 잠든 팩을 자동으로 깨우면 안 되기 때문이다.
+function nearestAggroedId(monsters, player) {
+  let best = null;
+  for (const m of monsters) {
+    if (!m.aggro) continue;
+    const closer = best === null || distanceBetween(m, player) < distanceBetween(best, player);
+    const tiedButEarlier =
+      best !== null && distanceBetween(m, player) === distanceBetween(best, player) && m.id < best.id;
+    if (closer || tiedButEarlier) best = m;
+  }
+  return best === null ? null : best.id;
+}
+
+
+// 플레이어의 자동공격: 대상이 사거리 1칸 안이고 공격 시각이 되면 한 대 때린다.
+//
+// 타이머(nextPlayerAttackTick)는 몬스터와 같이 사거리와 상관없이 흐른다. 대상이 없거나
+// 사거리 밖이면 칠 수 없을 뿐이고, 사거리에 들어오면 이어서 친다. 몬스터 공격이 먼저 처리된
+// 뒤에 오므로(advanceCombat), 이번 틱에 몬스터에게 죽은 플레이어는 치지 못한다.
+function playerAttackStep(state) {
+  if (state.defeated) return state;
+
+  const target = state.monsters.find((m) => m.id === state.targetId);
+  if (!target) return state;
+  if (distanceBetween(target, state.player) > MELEE_RANGE) return state;
+  if (state.tick < state.nextPlayerAttackTick) return state;
+
+  // 방어력만큼 줄이고 정수로 반올림한다. 백로그: 피해는 십 단위라 소수가 남으면 안 된다.
+  const damage = Math.round(
+    PLAYER_ATTACK_POWER * AUTO_ATTACK_COEFFICIENT * (1 - target.armor / (target.armor + ARMOR_K)),
+  );
+  const hp = target.hp - damage;
+  const nextPlayerAttackTick = state.tick + PLAYER_ATTACK_TICKS;
+
+  if (hp > 0) {
+    return {
+      ...state,
+      nextPlayerAttackTick,
+      monsters: state.monsters.map((m) => (m.id === target.id ? { ...m, hp } : m)),
+    };
+  }
+
+  // 죽었다: 몬스터를 지우고, 어그로 붙은 가장 가까운 몬스터를 새 대상으로 잡는다.
+  const monsters = state.monsters.filter((m) => m.id !== target.id);
+  return {
+    ...state,
+    nextPlayerAttackTick,
+    monsters,
+    targetId: nearestAggroedId(monsters, state.player),
+  };
+}
+
+
+// 시간이 한 틱 흐른 뒤 전투 쪽에서 일어나는 일: 어그로를 붙이고, 5틱 박자에는 걷고,
+// 몬스터가 때리고, 마지막에 플레이어가 때린다(이 순서).
 //
 // 추격 몬스터는 전원이 틱 5의 배수에 함께 움직인다(2026-11-17). 몬스터마다 타이머를
 // 두지 않아 상태 필드가 늘지 않는다. 대신 어그로가 붙은 뒤 첫 걸음까지 최대 0.5초가 걸린다.
-// 공격은 걸음과 달리 몬스터마다 자기 타이머를 쓴다 — 팩이 한꺼번에 때리면 피해가 몰린다.
-function advanceMonsters(state) {
+// 공격은 걸음과 달리 각자 자기 타이머를 쓴다 — 팩이 한꺼번에 때리면 피해가 몰린다.
+// 몬스터 공격이 플레이어 공격보다 먼저라서, 죽어 가는 몬스터도 마지막 한 대는 때리고 간다.
+function advanceCombat(state) {
   const pulled = pullPacks(state);
   const chased = pulled.tick % MOVE_TICKS === 0 ? chaseStep(pulled) : pulled;
-  return attackStep(chased);
+  return playerAttackStep(attackStep(chased));
 }
 
 
@@ -284,12 +359,18 @@ export function combatReducer(state, action) {
     // 시간이 한 틱 흐르고, 플레이어는 걸음 간격이 지났으면 한 걸음 간다. 그 뒤에
     // 몬스터 쪽이 움직인다(플레이어가 먼저, 몬스터가 나중).
     case 'tick':
-      return advanceMonsters(stepIfReady({ ...state, tick: state.tick + 1 }));
+      return advanceCombat(stepIfReady({ ...state, tick: state.tick + 1 }));
 
     // 나중에 누른 방향이 이긴다. 오른쪽을 누른 채 위를 누르면 위로 간다.
     // 누른 순간 걸음 간격이 지나 있으면 틱을 기다리지 않고 바로 한 걸음 간다.
     case 'moveStart':
       return stepIfReady({ ...state, heldDirection: action.direction });
+
+    // 몬스터를 자동공격 대상으로 고른다. 이미 대상인 몬스터를 다시 고르면 해제한다. 거리는
+    // 따지지 않는다(멀리 있는 몬스터도 고를 수 있고, 사거리는 때릴 때만 본다). 없는 id는 무시한다.
+    case 'selectTarget':
+      if (!state.monsters.some((m) => m.id === action.monsterId)) return state;
+      return { ...state, targetId: state.targetId === action.monsterId ? null : action.monsterId };
 
     // 뗀 키가 지금 가는 방향일 때만 멈춘다. 오른쪽 → 위를 누르고 오른쪽을 먼저
     // 떼는 경우, 무조건 null로 만들면 아직 누르고 있는 위까지 멈춰버린다.
