@@ -144,6 +144,8 @@ describe('createInitialState — initial layout (seam A)', () => {
     expect(state.rage).toBe(0)
     expect(state.gcdReadyTick).toBe(0)
     expect(state.queuedSkill).toBeNull()
+    // 채널 중인 스킬도 없다.
+    expect(state.channel).toBeNull()
   })
 })
 
@@ -714,6 +716,35 @@ function skillReady(hp = 1000, x = 9, y = 4) {
   }
 }
 
+// specs의 몬스터를 놓고 플레이어는 (5, 4)에서 facing을 본다. 대상은 targetId(기본 없음).
+// 몬스터 공격과 플레이어 자동공격은 멀리(1000) 미뤄 둔다. 몬스터는 모두 어그로 상태, hp 1000.
+function swingWith(specs, { facing = 'right', targetId = null } = {}) {
+  // 한 팩은 최대 4마리라서 4마리씩 팩을 나눠 만든다. 팩 번호는 어그로를 직접 켜 두므로 상관없고,
+  // id는 specs 순서(0부터)다.
+  const packs = []
+  for (let i = 0; i < specs.length; i += 4) {
+    packs.push({
+      packNumber: i / 4 + 1,
+      monsterTemplateId: 1,
+      amount: Math.min(4, specs.length - i),
+    })
+  }
+  const base = createInitialState(MONSTERS, packs)
+  return {
+    ...base,
+    player: { x: 5, y: 4, facing },
+    targetId,
+    nextPlayerAttackTick: 1000,
+    monsters: base.monsters.map((m, i) => ({
+      ...m,
+      hp: 1000,
+      aggro: true,
+      nextAttackTick: 1000,
+      ...specs[i],
+    })),
+  }
+}
+
 const castFurious = (state) => combatReducer(state, { type: 'useSkill', skill: 'furiousThrust' })
 
 describe('combatReducer — skills, Rage and the GCD (seam F)', () => {
@@ -990,34 +1021,6 @@ describe('combatReducer — skills, Rage and the GCD (seam F)', () => {
   // 플레이어는 (5, 4)에 서서 오른쪽을 본다: 범위는 x 6~7, y 3~5의 여섯 칸이다.
   const castSwing = (state) => combatReducer(state, { type: 'useSkill', skill: 'brutalSwing' })
 
-  // specs의 몬스터를 놓고 플레이어는 (5, 4)에서 facing을 본다. 대상은 targetId(기본 없음).
-  // 몬스터 공격과 플레이어 자동공격은 멀리(1000) 미뤄 둔다. 몬스터는 모두 어그로 상태, hp 1000.
-  function swingWith(specs, { facing = 'right', targetId = null } = {}) {
-    // 한 팩은 최대 4마리라서 4마리씩 팩을 나눠 만든다. 팩 번호는 어그로를 직접 켜 두므로 상관없고,
-    // id는 specs 순서(0부터)다.
-    const packs = []
-    for (let i = 0; i < specs.length; i += 4) {
-      packs.push({
-        packNumber: i / 4 + 1,
-        monsterTemplateId: 1,
-        amount: Math.min(4, specs.length - i),
-      })
-    }
-    const base = createInitialState(MONSTERS, packs)
-    return {
-      ...base,
-      player: { x: 5, y: 4, facing },
-      targetId,
-      nextPlayerAttackTick: 1000,
-      monsters: base.monsters.map((m, i) => ({
-        ...m,
-        hp: 1000,
-        aggro: true,
-        nextAttackTick: 1000,
-        ...specs[i],
-      })),
-    }
-  }
   const SWING_AREA = [
     [6, 3], [6, 4], [6, 5],
     [7, 3], [7, 4], [7, 5],
@@ -1171,5 +1174,237 @@ describe('combatReducer — skills, Rage and the GCD (seam F)', () => {
     const noTarget = castSwing(swingWith([{ x: 6, y: 4, hp: 40 }, { x: 12, y: 4 }]))
     expect(noTarget.monsters.map((m) => m.id)).toEqual([1])
     expect(noTarget.targetId).toBeNull()
+  })
+})
+
+
+// Whirling Slash(2026-11-17 합의). 채널 스펜더: 가진 정수 포인트를 전부 쓰고, 포인트당 0.7초(7틱)
+// 동안 돌면서 0.7초마다 한 번(포인트당 한 틱) 사거리 1칸 안의 모든 적에게 40(방어력 적용)을 준다.
+// 틱마다 그 순간의 범위를 새로 확인해서, 걸어 나가면 그 틱은 헛되고 돌아오면 이어진다. 대상도
+// 사거리 검사도 필요 없고 범위가 비어도 시작한다. 끝날 때 한 틱이라도 맞혔으면 체력 20을 회복한다.
+// 채널은 끝날 때까지 GCD를 잡고(1c는 0.7초가 아니라 GCD 1초), 그동안 이동과 평타는 막지 않는다.
+// 출혈은 이번 슬라이스가 아니다.
+//
+// 플레이어는 (5, 4). 바로 옆 칸(6, 4)의 적은 사거리 1 안이다.
+const castSpin = (state) => combatReducer(state, { type: 'useSkill', skill: 'whirlingSlash' })
+const spinWith = (specs, { rage = 50, ...options } = {}) => ({ ...swingWith(specs, options), rage })
+const hpsOf = (state) => state.monsters.map((m) => m.hp)
+
+describe('combatReducer — Whirling Slash channel (seam G)', () => {
+  test('G1: 3c spends all the Rage, deals nothing at once, then 40 at ticks 7, 14 and 21 and stops', () => {
+    const state = spinWith([{ x: 6, y: 4 }], { rage: 30 })
+
+    const cast = castSpin(state)
+    expect(cast.rage).toBe(0)
+    expect(cast.monsters[0].hp).toBe(1000)
+
+    expect(runTicks(cast, 6).monsters[0].hp).toBe(1000)
+    expect(runTicks(cast, 7).monsters[0].hp).toBe(960)
+    expect(runTicks(cast, 13).monsters[0].hp).toBe(960)
+    expect(runTicks(cast, 14).monsters[0].hp).toBe(920)
+    expect(runTicks(cast, 20).monsters[0].hp).toBe(920)
+    expect(runTicks(cast, 21).monsters[0].hp).toBe(880)
+    // 세 틱이 끝이다: 한참 뒤에도 더 깎이지 않는다.
+    expect(runTicks(cast, 60).monsters[0].hp).toBe(880)
+  })
+
+  test('G2: one tick per point — 1c to 5c deal 40, 80, 120, 160, 200 and take 0.7 s per point', () => {
+    for (let points = 1; points <= 5; points++) {
+      const cast = castSpin(spinWith([{ x: 6, y: 4 }], { rage: points * 10 }))
+      expect(runTicks(cast, 60).monsters[0].hp).toBe(1000 - 40 * points)
+    }
+
+    // 5c는 34틱에 네 번째 틱까지, 35틱에 마지막 틱이다.
+    const five = castSpin(spinWith([{ x: 6, y: 4 }], { rage: 50 }))
+    expect(runTicks(five, 34).monsters[0].hp).toBe(840)
+    expect(runTicks(five, 35).monsters[0].hp).toBe(800)
+  })
+
+  test('G3: the range is checked on every tick — a tick spent out of range is lost, and coming back resumes', () => {
+    const cast = castSpin(spinWith([{ x: 6, y: 4 }], { rage: 30 }))
+    const first = runTicks(cast, 7)
+    expect(first.monsters[0].hp).toBe(960)
+
+    // 두 번째 틱 전에 멀리(30칸) 가 있다가, 세 번째 틱 전에 돌아온다.
+    const away = { ...first, monsters: first.monsters.map((m) => ({ ...m, x: 30 })) }
+    const second = runTicks(away, 7)
+    expect(second.monsters[0].hp).toBe(960)
+
+    const back = { ...second, monsters: second.monsters.map((m) => ({ ...m, x: 6, y: 4 })) }
+    expect(runTicks(back, 7).monsters[0].hp).toBe(920) // 세 틱 중 두 틱만 맞았다
+  })
+
+  test('G4: every enemy within range 1 is hit, diagonals included, with no cap — and one at range 2 is not', () => {
+    // 플레이어(5, 4)를 8칸이 둘러싸고, 바깥(7, 4)에 한 마리가 더 있다. 둘러싼 8칸이 꽉 차서 바깥
+    // 적은 사거리 안으로 들어오지 못한다.
+    const ring = [
+      { x: 4, y: 3 }, { x: 5, y: 3 }, { x: 6, y: 3 },
+      { x: 4, y: 4 },                 { x: 6, y: 4 },
+      { x: 4, y: 5 }, { x: 5, y: 5 }, { x: 6, y: 5 },
+    ]
+    const state = spinWith([...ring, { x: 7, y: 4 }], { rage: 10 })
+
+    const after = runTicks(castSpin(state), 7)
+
+    expect(hpsOf(after)).toEqual([960, 960, 960, 960, 960, 960, 960, 960, 1000])
+  })
+
+  test('G5: armor cuts each tick and it is rounded — 250 gives 32, 100 gives 36, 300 gives 31', () => {
+    const damageTakenBy = (templateId) => {
+      const base = createInitialState(MONSTERS, [
+        { packNumber: 1, monsterTemplateId: templateId, amount: 1 },
+      ])
+      const state = spinWith([{ x: 6, y: 4, armor: base.monsters[0].armor }], { rage: 10 })
+      return 1000 - runTicks(castSpin(state), 7).monsters[0].hp
+    }
+
+    // 40 × (1 − armor / (armor + 1000))를 손으로 계산한 값이다(E6과 같은 표).
+    expect(damageTakenBy(1)).toBe(40) // 방어력 0
+    expect(damageTakenBy(2)).toBe(32) // 250: 정확히 32
+    expect(damageTakenBy(3)).toBe(36) // 100: 36.36 → 반올림 36 (올림이면 37)
+    expect(damageTakenBy(4)).toBe(31) // 300: 30.77 → 반올림 31 (내림이면 30)
+  })
+
+  test('G6: on completion it heals 20 if any tick connected, never past full health, and not before the end', () => {
+    const hurt = (hp, specs = [{ x: 6, y: 4 }]) => ({ ...spinWith(specs, { rage: 20 }), playerHp: hp })
+
+    // 2c는 틱 14에 끝난다. 중간(틱 7, 13)에는 회복이 없고, 끝나는 틱에 +20이다.
+    const cast = castSpin(hurt(500))
+    expect(runTicks(cast, 13).playerHp).toBe(500)
+    expect(runTicks(cast, 14).playerHp).toBe(520)
+    expect(runTicks(cast, 40).playerHp).toBe(520) // 한 번만
+
+    // 최대 체력을 넘지 않는다.
+    expect(runTicks(castSpin(hurt(990)), 14).playerHp).toBe(1000)
+    expect(runTicks(castSpin(hurt(1000)), 14).playerHp).toBe(1000)
+
+    // 한 틱도 못 맞혔으면 회복이 없다(범위 안에 아무도 없다).
+    expect(runTicks(castSpin(hurt(500, [])), 14).playerHp).toBe(500)
+
+    // 첫 틱만 맞고 둘째 틱은 빗나가도(적이 멀리 감) 한 틱이 맞았으니 회복한다.
+    const first = runTicks(castSpin(hurt(500)), 7)
+    const away = { ...first, monsters: first.monsters.map((m) => ({ ...m, x: 30 })) }
+    expect(runTicks(away, 7).playerHp).toBe(520)
+  })
+
+  test('G7: it starts even with nobody in range, needs 1c, and leaves a half point behind', () => {
+    // 범위가 비어도 시작한다: 분노는 쓰고 GCD는 5c의 3.5초(35틱) 동안 잡힌다.
+    const empty = castSpin(spinWith([], { rage: 50 }))
+    expect(empty.rage).toBe(0)
+    expect(empty.gcdReadyTick).toBe(35)
+
+    // 1c가 안 되면(0, 0.5c) 아무 일도 없고 GCD도 안 쓴다.
+    const none = spinWith([{ x: 6, y: 4 }], { rage: 0 })
+    expect(castSpin(none)).toEqual(none)
+    const half = spinWith([{ x: 6, y: 4 }], { rage: 5 })
+    expect(castSpin(half)).toEqual(half)
+
+    // 2.5c는 2c만 쓰고 0.5c가 남는다. 틱도 두 번이다.
+    const leftover = castSpin(spinWith([{ x: 6, y: 4 }], { rage: 25 }))
+    expect(leftover.rage).toBe(5)
+    expect(runTicks(leftover, 40).monsters[0].hp).toBe(920)
+  })
+
+  test('G8: the channel holds the GCD until it ends; a press in the last 3 ticks is remembered', () => {
+    const state = spinWith([{ x: 6, y: 4 }], { rage: 50, targetId: 0 })
+    const cast = castSpin(state) // 5c: 틱 35까지
+
+    // 5틱에 누른 Furious Thrust는 끝나려면 30틱이 남아 버려진다: 틱 피해(5 × 40 = 200)만 남는다.
+    const early = castFurious(runTicks(cast, 5))
+    expect(runTicks(early, 40).monsters[0].hp).toBe(800)
+
+    // 틱 32(3틱 남음)에 누르면 기억했다가 마지막 틱(35) 뒤에 나간다: 34틱까지는 160, 35틱에 200 + 80.
+    const queued = castFurious(runTicks(cast, 32))
+    expect(runTicks(queued, 2).monsters[0].hp).toBe(840)
+    const fired = runTicks(queued, 3)
+    expect(fired.monsters[0].hp).toBe(720)
+    expect(fired.rage).toBe(10)
+
+    // 1c는 0.7초(7틱)가 아니라 GCD 1초(10틱)다: 틱 7에 누른 입력은 틱 10에 나간다.
+    const one = castSpin(spinWith([{ x: 6, y: 4 }], { rage: 10, targetId: 0 }))
+    const queuedOne = castFurious(runTicks(one, 7))
+    expect(runTicks(queuedOne, 2).monsters[0].hp).toBe(960)
+    expect(runTicks(queuedOne, 3).monsters[0].hp).toBe(880)
+
+    // 기억해 둔 것이 또 Whirling Slash여도 앞 채널의 마지막 틱이 먼저 끝난 뒤에 시작한다(마지막 틱이
+    // 덮어써져 사라지면 안 된다). 틱 32에 분노를 2c로 채워 누르면: 틱 35에 앞 채널이 끝나며 800과
+    // 회복 20, 곧바로 새 채널이 시작해 분노가 0이 되고, 틱 49에 둘째 채널(2틱)이 끝나 720과 회복 20.
+    const hurt = { ...state, playerHp: 500 }
+    const refilled = castSpin({ ...runTicks(castSpin(hurt), 32), rage: 20 })
+    const atEnd = runTicks(refilled, 3)
+    expect(atEnd.monsters[0].hp).toBe(800)
+    expect(atEnd.playerHp).toBe(520)
+    expect(atEnd.rage).toBe(0)
+    const secondDone = runTicks(refilled, 17)
+    expect(secondDone.monsters[0].hp).toBe(720)
+    expect(secondDone.playerHp).toBe(540)
+  })
+
+  test('G9: the player can walk while channeling, and the channel keeps running', () => {
+    // 적은 (6, 4)에서 쫓아오고, 플레이어는 위로 걷는다. 3c = 틱 21까지.
+    const state = spinWith([{ x: 6, y: 4 }], { rage: 30, targetId: 0 })
+    const walking = combatReducer(castSpin(state), { type: 'moveStart', direction: 'up' })
+
+    // 누르자마자 한 걸음(y 3), 틱 5에 두 걸음째(y 2). 첫 틱(7)은 걸으면서도 맞는다.
+    const after7 = runTicks(walking, 7)
+    expect(after7.player.y).toBe(2)
+    expect(after7.monsters[0].hp).toBe(960)
+
+    // 걷는 중에 누른 Furious Thrust(틱 10, 11틱 남음)는 버려진다: 끝까지 틱 피해 120만 들어간다.
+    const pressed = castFurious(runTicks(walking, 10))
+    expect(runTicks(pressed, 11).monsters[0].hp).toBe(880)
+  })
+
+  test('G10: an enemy killed by a tick is removed, and the target moves on only if the target died', () => {
+    // 0번(대상)과 1번이 첫 틱에 죽고(hp 40), 2번만 남는다.
+    const targetDies = castSpin(
+      spinWith(
+        [{ x: 6, y: 4, hp: 40 }, { x: 6, y: 3, hp: 40 }, { x: 6, y: 5 }],
+        { rage: 10, targetId: 0 },
+      ),
+    )
+    const killed = runTicks(targetDies, 7)
+    expect(killed.monsters.map((m) => m.id)).toEqual([2])
+    expect(killed.targetId).toBe(2)
+
+    // 살아 있는 2번이 대상이면 0번이 죽어도 그대로다.
+    const targetLives = castSpin(
+      spinWith([{ x: 6, y: 4, hp: 40 }, { x: 6, y: 5 }], { rage: 10, targetId: 1 }),
+    )
+    expect(runTicks(targetLives, 7).targetId).toBe(1)
+
+    // 대상이 없으면 죽여도 선택이 생기지 않는다.
+    const noTarget = castSpin(spinWith([{ x: 6, y: 4, hp: 40 }, { x: 6, y: 5 }], { rage: 10 }))
+    expect(runTicks(noTarget, 7).targetId).toBeNull()
+  })
+
+  test('G11: a player killed on a channel tick does not spin, and a dead player stops channeling', () => {
+    // 몬스터가 틱 7에 때려 체력 10을 0으로 만든다. 몬스터 공격이 먼저라 같은 틱의 채널 틱은 안 나간다.
+    const state = { ...spinWith([{ x: 6, y: 4, nextAttackTick: 7 }], { rage: 30 }), playerHp: 10 }
+    const dead = runTicks(castSpin(state), 7)
+
+    expect(dead.defeated).toBe(true)
+    expect(dead.monsters[0].hp).toBe(1000)
+
+    // 죽은 뒤에는 시간이 흘러도 아무 일도 없다.
+    expect(runTicks(dead, 30).monsters[0].hp).toBe(1000)
+  })
+
+  test('G12: the auto-attack keeps swinging while the channel runs', () => {
+    // 자동공격을 켠 상태(타이머 0). 틱 1에 평타 40, 틱 21에 다시 40, 채널 틱은 7·14·21에 40씩.
+    const state = { ...spinWith([{ x: 6, y: 4 }], { rage: 50, targetId: 0 }), nextPlayerAttackTick: 0 }
+    const cast = castSpin(state)
+
+    expect(runTicks(cast, 1).monsters[0].hp).toBe(960)
+    expect(runTicks(cast, 21).monsters[0].hp).toBe(1000 - 80 - 120)
+
+    // 같은 틱(7)에 채널 틱과 평타가 겹치면 채널 틱이 먼저다. 0번(대상, hp 40)이 채널 틱에 죽고
+    // 대상이 1번으로 넘어가서, 평타는 1번을 때린다: 채널 40 + 평타 40 = 920. (평타가 먼저였다면
+    // 0번을 죽이고, 채널 틱은 1번만 때려서 960이 된다.)
+    const sameTick = {
+      ...spinWith([{ x: 6, y: 4, hp: 40 }, { x: 6, y: 3 }], { rage: 10, targetId: 0 }),
+      nextPlayerAttackTick: 7,
+    }
+    expect(runTicks(castSpin(sameTick), 7).monsters.map((m) => m.hp)).toEqual([920])
   })
 })

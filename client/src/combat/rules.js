@@ -32,7 +32,7 @@ const AGGRO_RADIUS = 5;
 
 // 몬스터가 때릴 수 있는 거리. 근접 사거리 1칸(대각선 포함, 백로그 Grid movement).
 // 추격하는 몬스터는 이 거리까지 다가오면 멈춘다.
-const MELEE_RANGE = 1;
+export const MELEE_RANGE = 1;
 
 // 플레이어의 시작 체력(백로그 Tier-1 numbers, 잠정). 실제로는 장비의 base_health가
 // 더해진 값이 되겠지만, 장비 연결 전이라 상수로 둔다.
@@ -75,6 +75,7 @@ const SKILLS = {
   furiousThrust: { damage: 80, rageGain: 10 },
   overheadSlam: { spender: true },
   brutalSwing: { area: true, damage: 40, rageGain: 5 },
+  whirlingSlash: { channel: true },
 };
 
 // Brutal Swing의 범위(백로그 Skill shapes in tiles): 바라보는 방향으로 폭 3칸(좌우 1칸씩) × 앞 2줄.
@@ -83,6 +84,15 @@ const SKILLS = {
 const SWING_ROWS = 2;
 const SWING_HALF_WIDTH = 1;
 const SWING_MAX_TARGETS = 5;
+
+// Whirling Slash(2026-11-17, 숫자는 잠정): 채널 스펜더. 포인트당 0.7초(스펙) 동안 돌고, 0.7초마다
+// 한 번(포인트당 한 틱) 사거리 1칸 안의 모든 적에게 SPIN_TICK_DAMAGE를 준다. 틱 간격이 지속 시간과
+// 같은 단위라서 n포인트는 정확히 n틱이다. 끝날 때 한 틱이라도 맞혔으면 체력을 SPIN_COMPLETION_HEAL
+// 만큼 회복한다(백로그 표의 20, 포션 600보다 훨씬 작다). 틱 피해 40은 Brutal Swing의 한 명당 피해와
+// 같은 값이다: 스펜더라 분노를 쓰는 대신 GCD를 채널이 끝날 때까지 잡는다.
+const SPIN_TICK_INTERVAL = secondsToTicks(0.7);
+const SPIN_TICK_DAMAGE = 40;
+const SPIN_COMPLETION_HEAL = 20;
 
 export const RAGE_PER_POINT = 10;
 
@@ -181,6 +191,9 @@ export function createInitialState(monsters, packs) {
     rage: 0,
     gcdReadyTick: 0,
     queuedSkill: null,
+    // 돌고 있는 채널(Whirling Slash). 없으면 null, 있으면 { ticksLeft, nextTickTick, connected }:
+    // 남은 틱 수, 다음 틱이 나가는 시각, 지금까지 한 틱이라도 맞혔는가(끝날 때의 회복 조건).
+    channel: null,
     // 복도 왼쪽 끝, 세로 가운데에서 출발한다. 1번 팩(x = 10)까지 어그로 반경
     // 5칸을 빼면 다섯 칸을 걸어야 첫 싸움이 붙는다.
     player: { x: 0, y: Math.floor(CORRIDOR_HEIGHT / 2), facing: 'right' },
@@ -229,7 +242,7 @@ function stepIfReady(state) {
 
 
 // 두 칸의 거리: 가로·세로 칸 차이 중 큰 쪽(정사각형 거리).
-function distanceBetween(a, b) {
+export function distanceBetween(a, b) {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
 }
 
@@ -406,6 +419,7 @@ function castSkill(state, skillId) {
   const skill = SKILLS[skillId];
   if (!skill) return state;
   if (skill.area) return castAreaSkill(state, skill);
+  if (skill.channel) return castChannelSkill(state);
 
   const target = state.monsters.find((m) => m.id === state.targetId);
   if (!target) return state;
@@ -472,6 +486,62 @@ function castAreaSkill(state, skill) {
 }
 
 
+// 채널 스킬을 쓴다. 대상도 사거리 검사도 없다(범위가 곧 사거리): 범위가 비어도 시작한다. 가진
+// 정수 포인트를 전부 쓰고(1c 미만이면 못 쓴다), GCD는 채널이 끝날 때까지 잡힌다 — 1c는 0.7초지만
+// GCD가 1초라서 1초다. 채널 중에 다른 스킬을 못 누르는 것도 이 GCD에서 따라 나오고, 끝나기 3틱
+// 안에 누른 입력은 기억했다가 마지막 틱 뒤에 나간다.
+function castChannelSkill(state) {
+  const points = Math.floor(state.rage / RAGE_PER_POINT);
+  if (points < 1) return state;
+
+  return {
+    ...state,
+    rage: state.rage - points * RAGE_PER_POINT,
+    channel: {
+      ticksLeft: points,
+      nextTickTick: state.tick + SPIN_TICK_INTERVAL,
+      connected: false,
+    },
+    gcdReadyTick: state.tick + Math.max(GCD_TICKS, points * SPIN_TICK_INTERVAL),
+  };
+}
+
+
+// 채널의 틱: 틱 시각이 되면 그 순간 사거리 1칸 안에 있는 모든 적을 때린다(상한 없음). 범위는 틱마다
+// 새로 확인해서, 걸어 나가면 그 틱은 헛되고 돌아오면 이어진다. 마지막 틱 뒤에 한 틱이라도 맞혔으면
+// 체력을 회복하고(최대 체력까지) 채널이 끝난다. 이동과 자동공격은 막지 않는다. 몬스터 공격이 먼저
+// 처리되므로 이번 틱에 죽은 플레이어는 돌지 못한다.
+function channelStep(state) {
+  const channel = state.channel;
+  if (state.defeated || !channel || state.tick < channel.nextTickTick) return state;
+
+  const inRange = state.monsters.filter((m) => distanceBetween(m, state.player) <= MELEE_RANGE);
+  let next = state;
+  for (const monster of inRange) next = damageMonster(next, monster, SPIN_TICK_DAMAGE);
+  next = retargetIfLost(next);
+
+  const connected = channel.connected || inRange.length > 0;
+  if (channel.ticksLeft > 1) {
+    return {
+      ...next,
+      channel: {
+        ticksLeft: channel.ticksLeft - 1,
+        nextTickTick: channel.nextTickTick + SPIN_TICK_INTERVAL,
+        connected,
+      },
+    };
+  }
+
+  return {
+    ...next,
+    channel: null,
+    playerHp: connected
+      ? Math.min(state.playerMaxHp, state.playerHp + SPIN_COMPLETION_HEAL)
+      : state.playerHp,
+  };
+}
+
+
 // GCD 중에 기억해 둔 스킬을 GCD가 끝나는 틱에 쓴다. 그 순간 쓸 수 없으면(대상이 사라졌거나
 // 사거리 밖) 조용히 버리고 GCD도 쓰지 않는다. 몬스터에게 죽은 플레이어는 쓰지 못한다.
 function queuedSkillStep(state) {
@@ -481,7 +551,8 @@ function queuedSkillStep(state) {
 
 
 // 시간이 한 틱 흐른 뒤 전투 쪽에서 일어나는 일: 어그로를 붙이고, 5틱 박자에는 걷고,
-// 몬스터가 때리고, 기억해 둔 스킬이 나가고, 마지막에 플레이어의 자동공격이 나간다(이 순서).
+// 몬스터가 때리고, 채널이 한 틱 돌고, 기억해 둔 스킬이 나가고, 마지막에 플레이어의 자동공격이
+// 나간다(이 순서). 채널이 기억해 둔 스킬보다 먼저라서, 채널의 마지막 틱이 끝난 뒤에야 입력이 나간다.
 //
 // 추격 몬스터는 전원이 틱 5의 배수에 함께 움직인다(2026-11-17). 몬스터마다 타이머를
 // 두지 않아 상태 필드가 늘지 않는다. 대신 어그로가 붙은 뒤 첫 걸음까지 최대 0.5초가 걸린다.
@@ -490,7 +561,7 @@ function queuedSkillStep(state) {
 function advanceCombat(state) {
   const pulled = pullPacks(state);
   const chased = pulled.tick % MOVE_TICKS === 0 ? chaseStep(pulled) : pulled;
-  return playerAttackStep(queuedSkillStep(attackStep(chased)));
+  return playerAttackStep(queuedSkillStep(channelStep(attackStep(chased))));
 }
 
 

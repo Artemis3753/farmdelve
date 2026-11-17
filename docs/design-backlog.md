@@ -508,6 +508,47 @@ the player can see why facing matters.
 - **Still open:** the tier-1 talent that widens the area to three rows is not built. No
   hit feedback yet: nothing on screen shows a swing that missed or how many it hit.
 
+### Whirling Slash in code (2026-11-17)
+
+The channeled area spender is on key 4 (slot 4). It is covered by tests G1–G12 and was
+checked by hand in the browser. **The bleed is not built yet**: the author split it off as the
+next slice, because it needs a damage-over-time state on monsters and a rule for re-applying it.
+
+- **As the spec had it.** It spends every whole point held (at least 1c, a half point stays),
+  needs no target and starts even with nobody in range 1, channels 0.7 s per point, and hits
+  every enemy within range 1 (diagonals included, no cap). The range is checked again on every
+  tick, so walking out wastes the tick and walking back resumes it. The player can walk during
+  the channel, the channel cannot be interrupted, and when it ends the player heals 20 if at
+  least one tick connected.
+- **One tick per point, every 0.7 s** (the author's choice). The tick interval was the open item
+  from Non-blocking, and it equals the per-point duration, so `n` points are exactly `n` ticks.
+  The alternatives shown were a tick every 0.5 s (ticks per point 1, 2, 4, 5, 7, uneven, with the
+  tail of the last 0.2 s dropped) and a tick on every game tick (35 ticks at 5c). A coarser tick
+  means a step out of range costs a whole point of damage, a finer one is gentler on walking.
+  For the tier-2 talent that spreads the bleed to two targets per tick, this gives at most 10
+  targets over a 5c channel, between the 6 to 8 of one-second ticks and the 14 of half-second ticks
+  the earlier note counted.
+- **WoW and Fellowship, as far as searches found:** WoW's Rupture bleed ticks every 2 s and lasts
+  `points x 2 + 6` s in the Cata-era formula (a community source), and a typical channel such as
+  Mind Flay ticks every 0.75 s. Ordinary WoW channels need the caster to stand still and moving
+  cancels them, so letting the player walk is the opposite choice, taken from the spec. Fellowship's
+  Mara has a bleed with 3 s ticks, but her area spender is not a channel, so no channeled finisher
+  was found to compare with.
+- **The channel holds the GCD until it ends** (the assistant's decision, stated before the cases
+  were approved). The GCD becomes `max(1 s, 0.7 s x points)`, so 1c still holds the normal 1 s.
+  "No other skill during the channel" then follows from the GCD with no separate rule, and a press
+  in the last 3 ticks is remembered and fires after the final tick, as for any skill.
+- **Within one tick:** monsters hit, the channel ticks, a remembered skill fires, the auto-attack
+  swings. The auto-attack keeps swinging during the channel, because it does not use the GCD.
+- **Numbers (balance, provisional):** 40 per tick per enemy, the same as one Brutal Swing hit,
+  because this skill costs Rage and holds the GCD for the whole channel. The completion heal of 20
+  is the figure already in the healing table, 3% of the potion's 600. A 5c channel is 200 to every
+  enemy in range over 3.5 s, so four rats around the player take 800 in total, against one
+  Overhead Slam's 525 on one enemy.
+- **Still open:** the bleed (duration, damage, tick, re-applying, and the spread talent), whether
+  the heal should be larger once the channel has a real cost, and feedback for a channel that
+  hit nothing. With the bleed missing, `Whirling Slash` is only the area damage and the heal.
+
 ### Trash mechanics (2026-08-27)
 
 Three of the five mechanics are written. **The two boss mechanics are left
@@ -598,8 +639,8 @@ pass:
 
 ### Tier-1 numbers (2026-09-15, damage 2026-09-26)
 
-None of this has been played. Combat code exists now (2026-11-17) but has three
-skills so far (Furious Thrust, Brutal Swing and Overhead Slam), so every value below is a starting point for the first real
+None of this has been played. Combat code exists now (2026-11-17) but has four
+skills so far (Furious Thrust, Brutal Swing, Overhead Slam and Whirling Slash without its bleed), so every value below is a starting point for the first real
 fights. **What is meant to
 last is the method** — which number anchors the rest and what gets worked
 backwards from what. Values marked *provisional* were set to fill the
@@ -982,10 +1023,12 @@ Blocking the dungeon, not the code:
 
 Non-blocking:
 
-- **Whirling Slash tick interval.** `0.7s per combo point` is fixed, the
-  tick rate is not — and the tier-2 talent (bleed spreads to two targets
-  per tick) has no defined strength until it is. Half-second ticks reach
-  ~14 targets over a five-point channel; one-second ticks reach 6–8.
+- **Whirling Slash tick interval.** *Settled 2026-11-17: one tick per
+  0.7 s, one per combo point; see "Whirling Slash in code".* It was open
+  because the tier-2 talent (bleed spreads to two targets per tick) had
+  no defined strength without it. Half-second ticks would reach ~14
+  targets over a five-point channel and one-second ticks 6–8; the chosen
+  tick reaches 10.
 - Whether a spread bleed landing on an already-bleeding target follows the
   pandemic rule.
 - **The three healing sources have to be balanced against each other** —
@@ -1066,8 +1109,9 @@ Non-blocking:
 - [x] **Player auto-attack and click targeting** — built and tested
       2026-11-17, numbers provisional
 - [ ] Skills, Rage and the trash mechanics in code — Furious Thrust, Brutal
-      Swing, Overhead Slam, the Rage bar and the GCD are built (2026-11-17);
-      Whirling Slash, the cooldowns, Sprint and the trash mechanics are not
+      Swing, Overhead Slam, Whirling Slash (channel and heal, no bleed yet),
+      the Rage bar and the GCD are built (2026-11-17); the bleed, the
+      cooldowns, Sprint and the trash mechanics are not
 - [x] **Trash mechanics** — spin, pools, volley
 - [ ] Names for the thirteen talents (owner: Jihwan)
 - [ ] The two boss mechanics — parked until the trash is playable

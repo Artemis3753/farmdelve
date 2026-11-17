@@ -11,9 +11,11 @@ import Icon from '../components/Icon.jsx'
 import {
   combatReducer,
   createInitialState,
+  distanceBetween,
   inSwingArea,
   CORRIDOR_HEIGHT,
   CORRIDOR_LENGTH,
+  MELEE_RANGE,
   QUEUE_WINDOW_TICKS,
   RAGE_PER_POINT,
   TICKS_PER_SECOND,
@@ -27,16 +29,20 @@ const SKILL_SLOTS = [1, 2, 3, 4, 5, 6, 7]
 
 // 칸 번호 → 그 칸에 놓인 스킬. 스펙의 스킬 번호를 그대로 쓴다.
 // 칸에 마우스를 올리면 이름이 보이게 title로 쓴다.
-const SLOT_SKILLS = { 1: 'furiousThrust', 2: 'brutalSwing', 3: 'overheadSlam' }
+const SLOT_SKILLS = { 1: 'furiousThrust', 2: 'brutalSwing', 3: 'overheadSlam', 4: 'whirlingSlash' }
 const SKILL_LABELS = {
   furiousThrust: 'Furious Thrust',
   brutalSwing: 'Brutal Swing',
   overheadSlam: 'Overhead Slam',
+  whirlingSlash: 'Whirling Slash',
 }
 
 // 키 → 스킬 id. 방향 키와 같은 이유로 event.code(Digit1)를 쓴다. 키 재설정은 이 표를 바꾸는
 // 방식으로 붙일 수 있다(칸 번호와 키를 하나로 묶지 않은 까닭이다).
-const KEY_SKILLS = { Digit1: 'furiousThrust', Digit2: 'brutalSwing', Digit3: 'overheadSlam' }
+// 분노를 쓰는 스킬. 1c도 없으면 눌러도 나가지 않아서 슬롯을 어둡게 한다.
+const SPENDER_SKILLS = ['overheadSlam', 'whirlingSlash']
+
+const KEY_SKILLS = { Digit1: 'furiousThrust', Digit2: 'brutalSwing', Digit3: 'overheadSlam', Digit4: 'whirlingSlash' }
 
 // 키 → 방향. 방향키와 WASD를 같이 받는다. event.key가 아니라 event.code("KeyW")를
 // 쓰는 것은, 한글 입력 상태에서는 W를 눌러도 event.key가 'ㅈ'이 되기 때문이다.
@@ -185,6 +191,10 @@ function DungeonRun({ templates, onLeave, onRetry }) {
       if (isPlayer) className += ' tile-player'
       // Brutal Swing이 닿는 6칸을 연하게 보여 준다. 바라보는 방향이 왜 중요한지 눈으로 보이게 하려는 것이다.
       if (inside && inSwingArea(state.player, x, y)) className += ' tile-swing'
+      // Whirling Slash를 도는 동안은 틱이 닿는 사거리 1칸(주변 8칸)을 칠한다.
+      if (inside && state.channel && !isPlayer && distanceBetween({ x, y }, state.player) <= MELEE_RANGE) {
+        className += ' tile-spin'
+      }
 
       tiles.push(
         // key는 복도 좌표(x)가 아니라 화면 좌표(col)다. 걸으면 x는 전부 바뀌지만
@@ -270,7 +280,7 @@ function DungeonRun({ templates, onLeave, onRetry }) {
             if (skill) className += ' skill-key-bound'
             if (skill && state.gcdReadyTick - state.tick > QUEUE_WINDOW_TICKS) className += ' skill-key-gcd'
             // 스펜더는 분노가 1c도 없으면 눌러도 나가지 않으므로, GCD와 상관없이 어둡게 한다.
-            if (skill === 'overheadSlam' && state.rage < RAGE_PER_POINT) className += ' skill-key-gcd'
+            if (SPENDER_SKILLS.includes(skill) && state.rage < RAGE_PER_POINT) className += ' skill-key-gcd'
 
             return (
               <li key={n} className={className} title={skill ? SKILL_LABELS[skill] : undefined}>
