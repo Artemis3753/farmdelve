@@ -9,18 +9,21 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   (`createInitialState`, seam A), movement (`combatReducer` actions `tick`,
   `moveStart`, `moveStop`, seam B), aggro and chase (the monster side of
   `combatReducer`'s `tick`, seam C), monster attacks and defeat (seam D), the
-  player's auto-attack, targets and kills (seam E), and skills, Rage and the GCD
-  (seam F). The screen (`Dungeon.jsx`) is not a seam: it is a thin layer that
-  dispatches actions and draws the state, and it was checked by hand in the browser.
-- **Every case below was approved by the author** before it was written, in eight
+  player's auto-attack, targets and kills (seam E), skills, Rage and the GCD
+  (seam F), and the Whirling Slash channel (seam G, split from F because it adds a
+  timed state, `channel`). The screen (`Dungeon.jsx`) is not a seam: it is a thin
+  layer that dispatches actions and draws the state, and it was checked by hand in
+  the browser.
+- **Every case below was approved by the author** before it was written, in nine
   rounds on 2026-11-17: A1–A5 and B1–B7, then the movement rule change (B1, B5–B7
   edits, B8–B10), then aggro (C1–C7), then monster attacks (D1–D6, plus edits to A1,
   A5 and B7), then the player's attacks (E1–E9, plus edits to A1, A5 and B7), then
   skills (F1–F10, plus edits to A5 and B7), then Overhead Slam (F11–F18), then Brutal
-  Swing (F19–F26). No test is written outside the list. The extensions after approval
-  are in E6, which gained two more armor values to pin the rounding rule, and in F5, F9
-  and F26, which gained one or two more assertions each to close gaps the mutation check
-  found.
+  Swing (F19–F26), then the Whirling Slash channel (G1–G12, plus an edit to A5 for the
+  new `channel` field). No test is written outside the list. The extensions after approval
+  are in E6, which gained two more armor values to pin the rounding rule, and in F5, F9,
+  F26, G8 and G12, which gained one or two more assertions each to close gaps the
+  mutation check found.
 - **The test code was written by Claude** from that list.
 - **The rule changes were decided by the author**: a key press steps at once, the
   aggro rules, the attack rules, and the targeting rules below. Claude changed
@@ -30,13 +33,13 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 
 - A1–A5 and B1–B7 are **characterization tests**: `rules.js` already existed, so
   they passed the first time they ran. They are not test-first development.
-- B8–B10, C1–C7, D1–D6, E1–E9 and F1–F26 were **red before the implementation**,
-  except C7, E4, E9, F2, F9, F13 and F14, which also passed before the implementation
+- B8–B10, C1–C7, D1–D6, E1–E9, F1–F26 and G1–G12 were **red before the implementation**,
+  except C7, E4, E9, F2, F9, F13, F14 and G11, which also passed before the implementation
   because nothing moved, hit, could be selected or could be cast yet (an unknown skill
   is ignored), so "nothing overlaps", "nobody is hit without a target", "a defeated
   player cannot select", "a failed press does nothing", "a defeated player cannot cast",
-  "a spender with under 1c does nothing" and "a slam with no target or out of range does
-  nothing" held trivially. They earn their place through the mutation check below.
+  "a spender with under 1c does nothing", "a slam with no target or out of range does
+  nothing" and "a player killed on a channel tick does not spin" held trivially. They earn their place through the mutation check below.
   F19, F21 and F24 were first red for the wrong reason: a crash in the test's own setup
   (a pack holds at most four monsters, and these cases need five or six). After the
   setup was fixed, "the skill does not exist" was checked as a breakage, and all of
@@ -119,9 +122,10 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 
 ## Skill, Rage and GCD rules (decided 2026-11-17)
 
-- **Three skills so far:** Furious Thrust, the single-target builder on key 1, Brutal
-  Swing, the area builder on key 2, and Overhead Slam, the single-target spender on key
-  3. Whirling Slash (the area spender) comes in a later slice.
+- **Four skills so far:** Furious Thrust, the single-target builder on key 1, Brutal
+  Swing, the area builder on key 2, Overhead Slam, the single-target spender on key 3,
+  and Whirling Slash, the channeled area spender on key 4. The bleed Whirling Slash
+  should also apply is the next slice.
 - **Furious Thrust** needs the primary target inside range 1 (diagonals included), hits
   it for 80 before armor, and adds 1c of Rage. Skills cost no resource. Rage is stored in
   whole units (1c = 10, maximum 5c = 50), as the spec note says, so 0.5c never needs a
@@ -174,6 +178,20 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   the swing count for Rage, and the target moves on only if the target itself died.
   Pressing a direction key toward a blocked tile turns the player in place (B4, B10),
   which is how the player aims at monsters standing right next to them.
+- **Whirling Slash** (decided 2026-11-17, numbers provisional) spends every whole point
+  held and needs at least 1c. It needs no target and no range check, and it starts even
+  with nobody in range. It channels for 0.7 s per point (7 ticks) and ticks every 0.7 s,
+  so `n` points are exactly `n` ticks. Each tick hits every enemy within range 1,
+  diagonals included, with no cap, for 40 before armor, and the range is checked again on
+  every tick: walking out of range wastes the tick, walking back resumes it. The player may
+  walk during the channel and the auto-attack keeps swinging. The channel cannot be
+  interrupted. When it ends, if at least one tick connected, the player heals 20 (never
+  past full health). The channel holds the GCD until it ends (1c, 0.7 s, still holds the
+  normal 1 s GCD), so no other skill can start in the meantime, and a press in the last 3
+  ticks is remembered and fires after the final tick. Within one tick the order is:
+  monsters hit, the channel ticks, a remembered skill fires, the auto-attack swings.
+  The bleed on the primary target is **not built yet**: the author split it off as the
+  next slice.
 
 ## Cases
 
@@ -270,6 +288,23 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 | F25 | A press in the last 3 ticks of the GCD is remembered and hits whoever is in the area when it fires; an earlier press is dropped | The queue must read the world when the skill fires | — |
 | F26 | A kill by the swing removes every dead monster, counts them for Rage, and moves the target on only when the target died; a swing with no target selects nothing | Area kills must not break targeting | — |
 
+### G. Whirling Slash channel — `combatReducer`
+
+| ID | Behavior | Why it is needed | What it does not catch |
+|----|----------|------------------|------------------------|
+| G1 | 3c spends all the Rage, deals nothing at once, then 40 at ticks 7, 14 and 21 and stops | The tick schedule is the skill: one tick per point, 0.7 s apart | — |
+| G2 | 1c to 5c deal 40, 80, 120, 160, 200 in total; 5c has four ticks done at tick 34 and five at tick 35 | Duration and tick count must both scale with the points | Whether 40 per tick is a good number |
+| G3 | The range is checked on every tick: a tick spent out of range is lost, and coming back resumes (two of three ticks hit) | The spec says walking away wastes ticks and walking back resumes them, with no separate rule | — |
+| G4 | Every enemy within range 1 is hit, diagonals included, with no cap (eight around the player), and one at range 2 is not | "Every enemy in range 1" is the area; the ring is full, so the outer enemy cannot walk in | — |
+| G5 | Armor cuts each tick and it is rounded: 250 gives 32, 100 gives 36, 300 gives 31 | Ticks share the one armor rule (the bleed will ignore it later) | The bleed |
+| G6 | On completion it heals 20 if any tick connected, never past full health, not before the end, and not if no tick connected; one early tick is enough | The spec: the heal lands only if at least one tick connected | Whether 20 is a good number |
+| G7 | It starts even with nobody in range (Rage spent, GCD held 35 ticks); under 1c nothing happens; 2.5c spends 2c, leaves 0.5c and ticks twice | An empty channel is the cost of bad positioning; the usual spender rules | — |
+| G8 | The channel holds the GCD to its end: an early press is dropped, one in the last 3 ticks fires after the final tick, 1c holds 10 ticks not 7, and a remembered second Whirling Slash starts after the first one finishes | "Other skills not pressed during the channel" comes out of the GCD; the order of the last tick and the remembered skill matters | — |
+| G9 | The player can walk during the channel, which keeps running | The spec: movement is allowed while channeling | — |
+| G10 | Enemies killed by a tick are removed; the target moves on only when the target died; with no target nothing is selected | The same targeting rule as every other kill | — |
+| G11 | A player killed on a channel tick does not spin, and a dead player stops channeling | Nothing may keep happening to a dead player | — |
+| G12 | The auto-attack keeps swinging, and on a tick where both land the channel comes first (the auto-attack then hits the new target if the tick killed the old one) | The auto-attack uses no GCD; the order inside a tick is a rule | — |
+
 ## Movement rule change (2026-11-17)
 
 The author changed the rule from "the first step comes on the next tick" to "a key
@@ -286,9 +321,10 @@ caught on the code before Overhead Slam (three of them are the rounding variants
 row, so that part has 91 rows). The Overhead Slam slice added 21 more breakages, listed
 after the table: 16 new rows and 5 re-runs of existing rows against the changed
 `castSkill`. The Brutal Swing slice added 42 more: 35 new rows and 7 re-runs of existing
-rows against the refactored hit code. All 156 were caught, and `rules.js` was restored
-afterwards. The test lists in the first 91 rows are from before the Slam and Swing tests
-existed, so they do not name F11–F26.
+rows against the refactored hit code. The Whirling Slash slice added 41 more: 38 new
+rows and 3 re-runs. All 197 were caught, and `rules.js` was restored afterwards. The test
+lists in the first 91 rows are from before the Slam, Swing and Whirling Slash tests
+existed, so they do not name F11–F26 or G1–G12.
 
 Along the way, several breakages first appeared to survive. Some were mistakes in the
 breaking script (a syntax error, or a pattern that did not apply), not real survivors.
@@ -472,6 +508,60 @@ One breakage survived and was not a test gap: comparing ids when two enemies are
 far. The monster list is always in id order and the sort keeps equal items in place, so the
 comparison did nothing. It was removed as dead code, and the tie rule is still pinned by F24.
 
+Added with Whirling Slash (38 new rows):
+
+| Breakage | Caught by |
+|----------|-----------|
+| The skill does not exist | G1–G12 |
+| The channel skill goes through the single-target path | G1–G12 |
+| Tick interval 0.7 s → 0.5 s | G1, G2, G6, G7, G8, G11, G12 |
+| Tick interval 0.7 s → 0.8 s | G1–G10, G12 |
+| Damage per tick 40 → 41 | G1–G5, G7, G8, G9, G12 |
+| Damage per tick 40 → 80 | G1–G5, G7, G8, G9, G12 |
+| Completion heal 20 → 21 | G6 |
+| Completion heal 20 → 0 | G6 |
+| Usable with 0 points | G7 |
+| Needs 2 points | G2, G4, G5, G8, G10 |
+| Points counted with round instead of floor | G7 |
+| Points counted with ceil instead of floor | G7 |
+| The channel spends no Rage | G1, G7, G8 |
+| The channel spends all Rage, half point included | G7 |
+| The channel spends one point only | G1, G7, G8 |
+| Always one tick | G1, G2, G3, G6, G7, G8, G9, G12 |
+| One tick too many | G1, G2, G6, G7, G8 |
+| First tick after 1 tick instead of 7 | G1, G2, G6, G8, G11, G12 |
+| Later ticks one tick late | G1, G2, G6, G8, G9, G12 |
+| GCD fixed at 1 s | G7, G8, G9 |
+| GCD only as long as the channel | G8 |
+| GCD the shorter of 1 s and the channel | G7, G8, G9 |
+| Range 1 → 0 | G1–G10, G12 |
+| Range 1 → 2 | G4 |
+| Heal only if the last tick connected | G6 |
+| Never counts as connected | G6 |
+| Always counts as connected | G6 |
+| Counts as connected from the start | G6 |
+| Heal not capped at full health | G6 |
+| Channel ends one tick early | G1, G2, G3, G6, G7, G8, G9 |
+| Channel never ends | G1, G2, G6, G7, G8 |
+| A defeated player still spins | G11 |
+| The channel does not move the target on | G10 |
+| The channel ticks after the remembered skill fires | G8 |
+| The channel ticks before the monsters hit | G11 |
+| The channel ticks after the auto-attack | G8, G12 |
+| The auto-attack is blocked while channeling | G12 |
+| Walking cancels the channel | G9 |
+
+Re-runs against the changed code, each still caught: armor ignored (E6, F6, F15, F22, G5),
+a hit edits a monster in place (B7, F4, F10, F16, F18, F25, G1, G2, G8, G12), and a dead
+monster stays on the field (E7, E8, F8, F17, F26, G10).
+
+Two things about this batch. First, the checking script only looked for failed tests named
+A to F, so the first run listed every breakage as surviving; the script was fixed to read
+G tests and the batch was run again. Second, after that fix two breakages truly survived,
+both about the order inside one tick: the channel ticking after the remembered skill, and
+after the auto-attack. G8 gained a queued second Whirling Slash and G12 gained a tick
+where the channel and the auto-attack land together, and both breakages are now caught.
+
 This shows the suite notices these breakages. It does not show that the rules are
 complete.
 
@@ -512,12 +602,25 @@ still dimmed every slot for the GCD. The console showed no errors or warnings. N
 the browser: more than five enemies in the area, since a pack has at most four and merging
 two packs takes a long walk. F24 covers it.
 
+Then Whirling Slash, checked on 2026-11-17 (key presses sent from the page): slot 4 is dim
+with no Rage and lights at 1c; with two rats beside the player, three Brutal Swings made 3c;
+key 4 then emptied the Rage and drew an outline around the eight tiles next to the player.
+The target's health fell by 40 at 0.66, 1.32 and 2.03 seconds after the press (ticks 0.7 s
+apart, within timer jitter) and 40 more at 1.53 and 3.54 seconds, which are the auto-attack
+(2.0 s apart). The outline vanished at 2.03 seconds, and at the same moment the player's
+health went from 860 to 880, the completion heal. Holding Up at 1.0 to 1.6 seconds moved
+the player up two rows while the ticks kept landing. The console showed no errors or
+warnings after a reload. Not tried by hand: walking out of range between ticks (G3), the
+queued second channel, and dying mid-channel; tests cover them.
+
 ## Not covered yet
 
 - Ranged monsters hold their ground while they can reach the player. Today they chase
   and hit like melee monsters, a temporary stand-in.
-- The rest of the skill kit: Whirling Slash (channel and bleed), the two cooldowns,
-  Sprint, and key rebinding. The tier 1 talent that widens Brutal Swing to three rows.
+- The rest of the skill kit: the bleed Whirling Slash applies to the primary target (the
+  next slice; it needs a damage-over-time state on monsters and a rule for re-applying it),
+  the two cooldowns, Sprint, and key rebinding. The tier 1 talent that widens Brutal Swing to
+  three rows.
 - The talents that change Overhead Slam (tier 3a refund, tier 5a crit and 5b bleed bonus)
   and the Slam's interaction with Market Price Rage.
 - The elite and ranged mechanics (spin, pools, volley), and the out-of-combat health

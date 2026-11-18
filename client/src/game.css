@@ -402,6 +402,12 @@ button.plot:enabled:hover {
   outline-offset: -3px;
 }
 
+/* Whirling Slash를 도는 동안 틱이 닿는 사거리 1칸. 실선 테두리라 Brutal Swing의 점선과 구분된다. */
+.tile-spin {
+  outline: 1px solid var(--accent-border);
+  outline-offset: -3px;
+}
+
 /* 자동공격 대상. 몬스터 칸의 붉은 테두리 위에 굵은 바깥선을 하나 더 두른다. */
 .tile-target {
   outline: 3px solid #B4402F;
