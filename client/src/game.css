@@ -414,6 +414,26 @@ button.plot:enabled:hover {
   outline-offset: 2px;
 }
 
+/* 출혈 중인 몬스터. outline은 대상·Brutal Swing·Whirling Slash 표시가 이미 쓰고 있고 한 칸에
+   하나만 그려지므로, 겹쳐도 서로 지우지 않게 구석의 점으로 따로 그린다. 구석이라 가운데의
+   이름 글자도 가리지 않는다. */
+.tile-bleed {
+  /* 점을 이 칸의 구석 기준으로 놓으려면 칸이 기준점이 되어야 한다. */
+  position: relative;
+}
+
+/* 몬스터 칸의 붉은색(#B4402F)과 같으면 테두리에 묻혀서, 더 선명한 핏빛을 쓴다. */
+.tile-bleed::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #E0162B;
+}
+
 .tile-icon {
   width: 70%;
   height: 70%;

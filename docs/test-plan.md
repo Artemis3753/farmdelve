@@ -11,19 +11,25 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   `combatReducer`'s `tick`, seam C), monster attacks and defeat (seam D), the
   player's auto-attack, targets and kills (seam E), skills, Rage and the GCD
   (seam F), and the Whirling Slash channel (seam G, split from F because it adds a
-  timed state, `channel`). The screen (`Dungeon.jsx`) is not a seam: it is a thin
+  timed state, `channel`), and the Whirling Slash bleed (seam H, a second timed state,
+  `bleed` on each monster). The screen (`Dungeon.jsx`) is not a seam: it is a thin
   layer that dispatches actions and draws the state, and it was checked by hand in
   the browser.
-- **Every case below was approved by the author** before it was written, in nine
-  rounds on 2026-11-17: A1–A5 and B1–B7, then the movement rule change (B1, B5–B7
+- **Every case below except H13–H15 was approved by the author** before it was written, in ten
+  rounds (nine on 2026-11-17, one on 2026-11-18): A1–A5 and B1–B7, then the movement rule change (B1, B5–B7
   edits, B8–B10), then aggro (C1–C7), then monster attacks (D1–D6, plus edits to A1,
   A5 and B7), then the player's attacks (E1–E9, plus edits to A1, A5 and B7), then
   skills (F1–F10, plus edits to A5 and B7), then Overhead Slam (F11–F18), then Brutal
   Swing (F19–F26), then the Whirling Slash channel (G1–G12, plus an edit to A5 for the
-  new `channel` field). No test is written outside the list. The extensions after approval
-  are in E6, which gained two more armor values to pin the rounding rule, and in F5, F9,
-  F26, G8 and G12, which gained one or two more assertions each to close gaps the
-  mutation check found.
+  new `channel` field), then the Whirling Slash bleed (H1–H12, plus edits to A1 for the new
+  `bleed` field and to B7 for the new code paths). **H13–H15 were added by Claude after
+  the mutation check found gaps in the order inside one tick and in the dead-player rule; the author has
+  not reviewed them yet.** The other extensions after approval are in E6, which gained two
+  more armor values to pin the rounding rule, in F5, F9, F26, G8 and G12, which gained one
+  or two more assertions each to close gaps the mutation check found, and in H6 and H10,
+  which gained a distance-2 case and an exact-zero-health case for the same reason.
+  G8, G9 and G12 also had their expected hit points lowered (by the 50 of the bleed
+  tick the new rule adds), because they cast Whirling Slash on a target in range.
 - **The test code was written by Claude** from that list.
 - **The rule changes were decided by the author**: a key press steps at once, the
   aggro rules, the attack rules, and the targeting rules below. Claude changed
@@ -44,6 +50,11 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   (a pack holds at most four monsters, and these cases need five or six). After the
   setup was fixed, "the skill does not exist" was checked as a breakage, and all of
   F19–F26 fail on it, so they do depend on the feature.
+- H1–H10 and H12 were **red before the implementation**. H11 was not (nothing ticked a
+  bleed yet, so "the channel comes first" held trivially). H13–H15 were written after the
+  implementation, so they were never seen red; each is shown to depend on its rule by a
+  breakage in the table below (H13 on a bleed ticking after the remembered skill, H14 on
+  after the auto-attack, H15 on a defeated player still bleeding the monster).
 - Expected values are written by hand from the rules in
   [design-backlog.md](design-backlog.md) (nine tiles tall, 2 tiles per second,
   packs 10 tiles apart, aggro radius 5, auto-attack every 2 seconds, armor
@@ -124,8 +135,8 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 
 - **Four skills so far:** Furious Thrust, the single-target builder on key 1, Brutal
   Swing, the area builder on key 2, Overhead Slam, the single-target spender on key 3,
-  and Whirling Slash, the channeled area spender on key 4. The bleed Whirling Slash
-  should also apply is the next slice.
+  and Whirling Slash, the channeled area spender on key 4, which also puts a bleed on the
+  primary target (see below).
 - **Furious Thrust** needs the primary target inside range 1 (diagonals included), hits
   it for 80 before armor, and adds 1c of Rage. Skills cost no resource. Rage is stored in
   whole units (1c = 10, maximum 5c = 50), as the spec note says, so 0.5c never needs a
@@ -189,9 +200,24 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   past full health). The channel holds the GCD until it ends (1c, 0.7 s, still holds the
   normal 1 s GCD), so no other skill can start in the meantime, and a press in the last 3
   ticks is remembered and fires after the final tick. Within one tick the order is:
-  monsters hit, the channel ticks, a remembered skill fires, the auto-attack swings.
-  The bleed on the primary target is **not built yet**: the author split it off as the
-  next slice.
+  monsters hit, the channel ticks, the bleeds tick, a remembered skill fires, the
+  auto-attack swings.
+- **The Whirling Slash bleed** (decided 2026-11-18, numbers provisional): on the press, if
+  the selected target is within range 1, it gets a bleed. With no target, or one out of
+  range, no bleed is applied and the rest of the skill happens as before. The duration is
+  4 s plus 2 s per point spent (1c 6 s, 3c 10 s, 5c 14 s), it ticks every 2 s for 50, and it
+  ignores armor. Range is checked only when the bleed is applied: once it is on, it keeps
+  ticking if the target or the player walks away. Applying it again to a bleeding target
+  follows the pandemic rule: the new end is now plus the new duration plus the smaller of
+  the time left and 30% of the new duration, and the next tick time is left as it was.
+  The author chose the duration scaling, the moment of application (the press) and keeping the tick
+  schedule on a refresh. Two consequences were derived, not chosen: a refresh that puts the end
+  between ticks has no partial tick, and a bleed that kills a monster removes it like any
+  other kill. The bleed ticks after the channel and before the remembered skill and the
+  auto-attack, so a monster it kills cannot be hit by those on the same tick. The
+  50 and the 2-second tick are Claude's recommendations (balance numbers are the author's to adjust
+  later); 5c is 200 from the channel plus 350 from the bleed, against 525 for one Overhead Slam.
+  The tier 2 talent that spreads the bleed is not built.
 
 ## Cases
 
@@ -305,6 +331,29 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
 | G11 | A player killed on a channel tick does not spin, and a dead player stops channeling | Nothing may keep happening to a dead player | — |
 | G12 | The auto-attack keeps swinging, and on a tick where both land the channel comes first (the auto-attack then hits the new target if the tick killed the old one) | The auto-attack uses no GCD; the order inside a tick is a rule | — |
 
+G8, G9 and G12 cast on a target in range, so since the bleed their expected hit points include
+the bleed ticks (their comments say how many).
+
+### H. Whirling Slash bleed — `combatReducer`
+
+| ID | Behavior | Why it is needed | What it does not catch |
+|----|----------|------------------|------------------------|
+| H1 | Pressing with the target in range puts a bleed on it, timed from the tick of the press (1c at tick 0: ends 60, first tick 20; pressed at tick 3: 63 and 23) | The bleed is state with its own clock | — |
+| H2 | The duration is 4 s plus 2 s per point: 1c 6 s, 3c 10 s, 5c 14 s | The author chose that more Rage means a longer bleed | Whether these numbers are good |
+| H3 | 50 every 20 ticks, the last tick lands on the end, then the bleed is null and nothing more is dealt (5c: 200 + 350 in total) | Schedule and expiry | — |
+| H4 | The bleed ignores armor while the channel tick beside it does not (armor 500: 27 + 3 × 50) | Backlog: bleeds ignore armor | — |
+| H5 | Only the selected target is bled, even if others stand in range | The bleed goes to the primary target | — |
+| H6 | No target, a target at distance 4 or 2, or a far target with another enemy near: nobody is bled and the channel still runs | The skill needs no target, the bleed does | — |
+| H7 | After it is applied, the bleed keeps ticking when the target leaves the range | Range is checked only when applied | Whether that feels right to play |
+| H8 | Refreshing in the last 30%: all the time left is carried over and the tick schedule is kept | The pandemic rule | — |
+| H9 | Refreshing earlier: only 30% of the new duration is carried (5c +42 ticks, 1c +18); an end between ticks gives no partial tick | The pandemic cap, and integer ticks | — |
+| H10 | A monster killed by a bleed tick (down to exactly 0 too) is removed, and the target moves on if it was the target | The same kill rules as every other hit | — |
+| H11 | On a tick where the channel and a bleed both land, the channel comes first (seen through the heal) | The order inside a tick is a rule | — |
+| H12 | A remembered Whirling Slash applies the bleed when it fires, counted from that tick | The queue reads the world when the skill fires | — |
+| H13 | A bleed tick that kills the target comes before a remembered skill, which finds no target (Rage unchanged) | The order inside a tick | — |
+| H14 | A bleed tick that kills the target comes before the auto-attack, which swings at the next target | The order inside a tick | — |
+| H15 | A player killed on the tick of a bleed tick does not bleed the monster, and later ticks do nothing | Nothing may keep happening to a dead player | — |
+
 ## Movement rule change (2026-11-17)
 
 The author changed the rule from "the first step comes on the next tick" to "a key
@@ -322,9 +371,11 @@ row, so that part has 91 rows). The Overhead Slam slice added 21 more breakages,
 after the table: 16 new rows and 5 re-runs of existing rows against the changed
 `castSkill`. The Brutal Swing slice added 42 more: 35 new rows and 7 re-runs of existing
 rows against the refactored hit code. The Whirling Slash slice added 41 more: 38 new
-rows and 3 re-runs. All 197 were caught, and `rules.js` was restored afterwards. The test
-lists in the first 91 rows are from before the Slam, Swing and Whirling Slash tests
-existed, so they do not name F11–F26 or G1–G12.
+rows and 3 re-runs. The Whirling Slash bleed slice added 40 more (all new rows): 39 were caught
+and one survived because it was dead code, which was removed (see below). Counting the 197 before
+the bleed, all 236 breakages of live code were caught, and `rules.js` was restored after every run. The test lists in the first 91 rows
+are from before the Slam, Swing, Whirling Slash and bleed tests existed, so they do not name
+F11–F26, G1–G12 or H1–H15.
 
 Along the way, several breakages first appeared to survive. Some were mistakes in the
 breaking script (a syntax error, or a pattern that did not apply), not real survivors.
@@ -565,6 +616,65 @@ where the channel and the auto-attack land together, and both breakages are now 
 This shows the suite notices these breakages. It does not show that the rules are
 complete.
 
+Added with the Whirling Slash bleed (39 caught rows, plus one that survived and was removed):
+
+| Breakage | Caught by |
+|----------|-----------|
+| The channel applies no bleed | G8, G9, G12, H1, H2, H3, H4, H5, H7, H8, H9, H10, H12 |
+| Base duration 4 s → 5 s | H1, H2, H3, H5, H8, H9, H12 |
+| Base duration 4 s → 3 s | H1, H2, H3, H4, H5, H7, H8, H9, H12 |
+| Per point 2 s → 3 s | H1, H2, H3, H5, H8, H9, H12 |
+| Per point 2 s → 1 s | H1, H2, H3, H4, H5, H7, H8, H9, H12 |
+| Tick interval 2 s → 1 s | G8, G9, G12, H1, H3, H4, H5, H7, H8, H9, H10, H12 |
+| Tick interval 2 s → 3 s | G8, G9, G12, H1, H3, H4, H5, H7, H8, H9, H10, H12 |
+| Tick damage 50 → 51 | G8, G9, G12, H3, H4, H5, H7, H8, H9 |
+| Tick damage 50 → 40 | G8, G9, G12, H3, H4, H5, H7, H8, H9, H10, H14 |
+| Armor applied to the bleed | H4 |
+| Every enemy in range is bled | H5 |
+| No range check on the target | H6 |
+| Range check one tile too wide | H6 |
+| First tick at the press instead of 2 s later | G8, G9, G12, H1, H3, H4, H5, H7, H8, H9, H10, H12 |
+| End counted from tick 0 | H1, H12 |
+| Pandemic carries nothing | H8, H9 |
+| Pandemic carry uncapped | H9 |
+| Pandemic always carries the full 30% | H8 |
+| Carry ratio 30% → 50% | H9 |
+| Carry ratio 30% → 20% | H8, H9 |
+| A refresh resets the tick schedule | G8, H8 |
+| Carry measured to the next tick instead of the end | H8 |
+| Last tick dropped | H3, H4, H5, H7, H8 |
+| The bleed is never removed | H3, H8, H9 |
+| Removed one tick late | H3 |
+| Removed one tick early | H3, H4, H5, H7, H8 |
+| Bleed ticks before the channel | H11 |
+| Bleed ticks after the remembered skill | H13 |
+| Bleed ticks after the auto-attack | H13, H14 |
+| A bleed kill does not move the target on | H10, H14 |
+| A monster at exactly 0 hp stays | H10, H14 |
+| Bleed only ticks while in range | H7 |
+| A tick edits the monster in place | B7 |
+| Applying edits the monster in place | B7 |
+| A defeated player does not stop bleed ticks | H15 |
+| Duration ignores the points spent | H1, H2, H3, H5, H8, H9, H12 |
+| Duration counts one point too many | H1, H2, H3, H5, H8, H9, H12 |
+| A monster with no bleed gets a bleed object on every tick | G12, H5 |
+| A new monster has no bleed field instead of null | A1, H5, H6, H12 |
+
+The 40th breakage removed the line that stopped a bleed from ticking once its next tick time
+is past its end. It survived because the line could never matter: when the next tick time is
+past the end, the bleed has already been removed at the end tick. The line was deleted as dead
+code, and "no partial tick" is pinned by H9 through the expiry.
+
+On the first full run six breakages survived: that one and five that were real gaps. Range one
+tile too wide (H6 now has a distance-2 case), a monster at exactly 0 health staying (H10 now
+reaches exactly 0), the bleed ticking after the remembered skill (H13), after the auto-attack
+(H14), and a defeated player not stopping bleed ticks (H15). The checking script first read the
+vitest output the wrong way and reported every breakage as unparsable; it was fixed and the batch
+was run again, and then once more on the final code, which is the table above.
+
+This shows the suite notices these breakages. It does not show that the rules are
+complete.
+
 ## Checked by hand in the browser
 
 Keyboard and timer wiring, the defeat screen, and the click-to-target screen have no
@@ -613,12 +723,22 @@ the player up two rows while the ticks kept landing. The console showed no error
 warnings after a reload. Not tried by hand: walking out of range between ticks (G3), the
 queued second channel, and dying mid-channel; tests cover them.
 
+Then the Whirling Slash bleed, checked on 2026-11-18 (key presses sent from the page; the dot
+on the tile is drawn by a small CSS rule and was only seen on screen, not tested): with two rats
+beside the player and one clicked as the target, three Brutal Swings 1.15 s apart made 3c and key 4
+then put the `tile-bleed` class on the target within 0.3 s. Over the next 12 s the target's health
+fell by the channel ticks (40 each, 0.7 s apart), a bleed tick of 50 every 2 s and the auto-attack
+(40 every 2 s): from 5.6 s to 11.6 s it lost 90 every 2 s, that is one bleed tick and one swing, and
+the class was gone by 11.6 s (a 3c bleed ends at 10 s). A second cast with 2c put a small red dot in the top
+right corner of the target tile, visible together with the target outline. The browser console showed
+no errors or warnings. Not tried by hand: refreshing a bleeding target, a bleed that kills a
+monster, and walking away from a bleeding monster; tests cover them.
+
 ## Not covered yet
 
 - Ranged monsters hold their ground while they can reach the player. Today they chase
   and hit like melee monsters, a temporary stand-in.
-- The rest of the skill kit: the bleed Whirling Slash applies to the primary target (the
-  next slice; it needs a damage-over-time state on monsters and a rule for re-applying it),
+- The rest of the skill kit: the tier 2 talent that spreads the bleed to a second target,
   the two cooldowns, Sprint, and key rebinding. The tier 1 talent that widens Brutal Swing to
   three rows.
 - The talents that change Overhead Slam (tier 3a refund, tier 5a crit and 5b bleed bonus)

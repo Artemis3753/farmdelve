@@ -3,7 +3,7 @@
 Working document. Tracks what is decided, what is still open, and what is
 deliberately out of scope. Updated as design sessions go.
 
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 ---
 
@@ -511,8 +511,8 @@ the player can see why facing matters.
 ### Whirling Slash in code (2026-11-17)
 
 The channeled area spender is on key 4 (slot 4). It is covered by tests G1–G12 and was
-checked by hand in the browser. **The bleed is not built yet**: the author split it off as the
-next slice, because it needs a damage-over-time state on monsters and a rule for re-applying it.
+checked by hand in the browser. The bleed was split off and built the next day: see "Whirling
+Slash bleed in code" below. This section describes the channel and the heal as they were built first.
 
 - **As the spec had it.** It spends every whole point held (at least 1c, a half point stays),
   needs no target and starts even with nobody in range 1, channels 0.7 s per point, and hits
@@ -539,15 +539,63 @@ next slice, because it needs a damage-over-time state on monsters and a rule for
   "No other skill during the channel" then follows from the GCD with no separate rule, and a press
   in the last 3 ticks is remembered and fires after the final tick, as for any skill.
 - **Within one tick:** monsters hit, the channel ticks, a remembered skill fires, the auto-attack
-  swings. The auto-attack keeps swinging during the channel, because it does not use the GCD.
+  swings (the bleed ticks were added after the channel on 2026-11-18). The auto-attack keeps
+  swinging during the channel, because it does not use the GCD.
 - **Numbers (balance, provisional):** 40 per tick per enemy, the same as one Brutal Swing hit,
   because this skill costs Rage and holds the GCD for the whole channel. The completion heal of 20
   is the figure already in the healing table, 3% of the potion's 600. A 5c channel is 200 to every
   enemy in range over 3.5 s, so four rats around the player take 800 in total, against one
   Overhead Slam's 525 on one enemy.
-- **Still open:** the bleed (duration, damage, tick, re-applying, and the spread talent), whether
-  the heal should be larger once the channel has a real cost, and feedback for a channel that
-  hit nothing. With the bleed missing, `Whirling Slash` is only the area damage and the heal.
+- **Still open:** whether the heal should be larger once the channel has a real cost, and
+  feedback for a channel that hit nothing.
+
+### Whirling Slash bleed in code (2026-11-18)
+
+The bleed rides on the channel and goes to the primary target, as the spec had it. It is
+covered by tests H1–H15 and was checked by hand in the browser. The monster state has a
+`bleed` field, `null` or `{ endTick, nextTickTick }`.
+
+- **When it is applied** (the author's choice): on the press, if the selected target is within
+  range 1. With no target, or one out of range, no bleed is applied and the channel, its area
+  damage and its heal happen as before. The alternatives shown were applying it when the channel
+  ends (a long channel delays the bleed by up to 3.5 s) and on the first tick that hits the target
+  (it needs a state for "which tick was first"). The cost of the press rule is that range is
+  checked once, so a target that walks away after the press keeps the bleed.
+- **Duration** (the author's choice): 4 s plus 2 s per point spent, so 1c is 6 s and 5c is 14 s. The
+  alternative was a fixed 12 s, which would make 1c and 5c equal and reward saving Rage for nothing.
+  The shape is the same as WoW's Rupture and Fellowship's Mara, where the combo points lengthen the
+  bleed. The 4 s and the 2 s are Claude's recommendation.
+- **Tick** (Claude's recommendation, provisional): every 2 s for 50, ignoring armor (the Stats rule).
+  5c is 7 ticks, 350, which on top of the 200 from the channel puts about 550 on the primary target,
+  close to one Overhead Slam's 525. The area damage and the heal come on top of that.
+- **Refreshing a bleeding target follows the pandemic rule** (the author's choice, and the rule
+  already in Combat rules): the new end is now plus the new duration plus the smaller of the time
+  left and 30% of the new duration, and the next tick time is left as it was (the author's choice,
+  the WoW way). The alternative, restarting the tick timer, would cost a tick when refreshing just
+  before one, which defeats the point of a refresh that loses nothing.
+- **Two derived consequences:** a refresh can put the end between two ticks, and then there is no
+  partial tick (ticks stay whole, as everywhere else). And once applied, the bleed ticks whether
+  or not anyone is in range, which makes walking away from a bleeding monster a real option.
+- **WoW and Fellowship, as far as the searches found (search results only, 2026-11-18):** WoW's
+  pandemic lets a refresh in the last 30% of the duration lose nothing and caps the total at 130%
+  of the base duration, with ticks keeping the old schedule ([Maxroll](https://maxroll.gg/wow/resources/pandemic),
+  [Warcraft Wiki](https://warcraft.wiki.gg/wiki/Damage_of_time)). The sources word the carry-over two
+  ways, "add the full new duration to what is left, capped at 130%" and "retain the smaller of 30% of
+  the base or what is left"; they give the same result. Fellowship's Mara applies a bleed of 77%
+  Agility every 3 s for 12 s whose duration grows with the combo points spent
+  ([Icy Veins](https://www.icy-veins.com/fellowship/news/mara-hero-dps-guide/)), but
+  [Method](https://www.method.gg/fellowship/heroes/mara) lists per-point durations that contradict
+  each other (5 s at 1 point, 15 s at 1 point), so no Fellowship number was used. **No Fellowship
+  source on how a bleed refreshes was found.** The WoW pages were read as search results, not opened.
+- **Within one tick:** monsters hit, the channel ticks, the bleeds tick, a remembered skill fires,
+  the auto-attack swings. A monster the channel kills is not bled that tick, and one the bleed kills
+  is gone before the remembered skill or the auto-attack picks a target.
+- **Screen:** a bleeding monster tile has a small red dot in its top right corner (`tile-bleed`). It
+  shows on and off only, not the time left, and it can be seen together with the target outline.
+  Skill effects will be drawn later with pixelfx.
+- **Still open:** the tier-2 talent that spreads the bleed to a second target per tick, and whether
+  such a spread landing on a bleeding monster follows the pandemic rule (the question under
+  Non-blocking). The 50 and the 2-second tick are untested balance guesses.
 
 ### Trash mechanics (2026-08-27)
 
@@ -640,7 +688,7 @@ pass:
 ### Tier-1 numbers (2026-09-15, damage 2026-09-26)
 
 None of this has been played. Combat code exists now (2026-11-17) but has four
-skills so far (Furious Thrust, Brutal Swing, Overhead Slam and Whirling Slash without its bleed), so every value below is a starting point for the first real
+skills so far (Furious Thrust, Brutal Swing, Overhead Slam and Whirling Slash with its bleed), so every value below is a starting point for the first real
 fights. **What is meant to
 last is the method** — which number anchors the rest and what gets worked
 backwards from what. Values marked *provisional* were set to fill the
@@ -1079,7 +1127,8 @@ Non-blocking:
 - Drop details — per-tier rates, duplicate handling, how many items one
   clear can yield.
 - Greenhouse screen contents. The grid size itself is settled — 25 plots.
-- Pandemic formula specifics.
+- ~~Pandemic formula specifics.~~ Settled for the single-target bleed on 2026-11-18, see
+  "Whirling Slash bleed in code". Only the spread talent's case is still open.
 - In-game calendar (days, seasons) or real elapsed time only?
 - ~~Farm-themed monster roster~~ — **named 2026-09-30**: Field Rat,
   Thresher, Blight Slug, Seedspitter. Each name hints at its mechanic. The
@@ -1109,9 +1158,9 @@ Non-blocking:
 - [x] **Player auto-attack and click targeting** — built and tested
       2026-11-17, numbers provisional
 - [ ] Skills, Rage and the trash mechanics in code — Furious Thrust, Brutal
-      Swing, Overhead Slam, Whirling Slash (channel and heal, no bleed yet),
-      the Rage bar and the GCD are built (2026-11-17); the bleed, the
-      cooldowns, Sprint and the trash mechanics are not
+      Swing, Overhead Slam, Whirling Slash (channel, heal and bleed), the
+      Rage bar and the GCD are built (2026-11-17 and 2026-11-18); the bleed
+      spread talent, the cooldowns, Sprint and the trash mechanics are not
 - [x] **Trash mechanics** — spin, pools, volley
 - [ ] Names for the thirteen talents (owner: Jihwan)
 - [ ] The two boss mechanics — parked until the trash is playable
