@@ -94,6 +94,19 @@ const SPIN_TICK_INTERVAL = secondsToTicks(0.7);
 const SPIN_TICK_DAMAGE = 40;
 const SPIN_COMPLETION_HEAL = 20;
 
+// Whirling Slash의 출혈(2026-11-18, 숫자는 잠정): 채널을 누르는 순간 선택한 대상(사거리 1칸 안)에게
+// 건다. 지속시간은 4초 + 쓴 포인트당 2초라서 1c 6초, 5c 14초이고 틱 간격(2초)의 배수라 틱이 딱 떨어진다.
+// 틱 피해 50은 방어력을 무시한다(백로그 Stats). 5c 한 번이면 채널 200 + 출혈 350 = 550으로 단일 대상
+// 스펜더(Overhead Slam 5c 525)와 비슷하고, 범위 피해와 회복은 덤이다.
+const BLEED_BASE_TICKS = secondsToTicks(4);
+const BLEED_TICKS_PER_POINT = secondsToTicks(2);
+const BLEED_TICK_INTERVAL = secondsToTicks(2);
+const BLEED_TICK_DAMAGE = 50;
+
+// pandemic(WoW, 2026-11-18): 이미 걸린 출혈을 다시 걸면 남은 시간을 새 지속시간에 이어 붙이되, 이어 붙이는
+// 양은 새 지속시간의 30%까지다. 그래서 막판에 갱신하면 손해가 없고 일찍 갱신하면 초과분만 버려진다.
+const BLEED_CARRY_RATIO = 0.3;
+
 export const RAGE_PER_POINT = 10;
 
 // Overhead Slam의 피해 곡선(2026-11-17 합의): 200 × n^0.6, n = 쓴 포인트, 반올림. 포인트를
@@ -171,6 +184,8 @@ export function createInitialState(monsters, packs) {
         attackDamage: template.autoAttack,
         attackTicks: secondsToTicks(template.autoAttackSeconds),
         nextAttackTick: 0,
+        // 걸려 있는 출혈. 없으면 null, 있으면 { endTick, nextTickTick }: 만료 시각과 다음 틱 시각.
+        bleed: null,
       });
     }
   }
@@ -496,6 +511,7 @@ function castChannelSkill(state) {
 
   return {
     ...state,
+    monsters: applyBleed(state, points),
     rage: state.rage - points * RAGE_PER_POINT,
     channel: {
       ticksLeft: points,
@@ -504,6 +520,58 @@ function castChannelSkill(state) {
     },
     gcdReadyTick: state.tick + Math.max(GCD_TICKS, points * SPIN_TICK_INTERVAL),
   };
+}
+
+
+// 선택한 대상이 사거리 1칸 안이면 그 한 명에게 출혈을 걸거나 갱신한 몬스터 목록을 돌려준다(아니면 그대로).
+// 사거리는 거는 순간에만 본다. 이미 걸려 있으면 pandemic: 남은 시간을 새 지속시간의 30%까지 이어 붙이고,
+// 다음 틱 시각은 건드리지 않아서 갱신해도 틱을 잃거나 덤으로 얻지 않는다.
+function applyBleed(state, points) {
+  const target = state.monsters.find((m) => m.id === state.targetId);
+  if (!target || distanceBetween(target, state.player) > MELEE_RANGE) return state.monsters;
+
+  const duration = BLEED_BASE_TICKS + points * BLEED_TICKS_PER_POINT;
+  const bleed = target.bleed
+    ? {
+        endTick:
+          state.tick +
+          duration +
+          Math.min(target.bleed.endTick - state.tick, Math.round(duration * BLEED_CARRY_RATIO)),
+        nextTickTick: target.bleed.nextTickTick,
+      }
+    : { endTick: state.tick + duration, nextTickTick: state.tick + BLEED_TICK_INTERVAL };
+
+  return state.monsters.map((m) => (m.id === target.id ? { ...m, bleed } : m));
+}
+
+
+// 출혈의 틱: 틱 시각이 되면 방어력과 상관없이 50을 준다. 만료 시각이 되면(마지막 틱이 만료 시각과 같은
+// 틱에 나가고 그 뒤에) 출혈이 사라진다. 그래서 갱신으로 만료가 틱 사이에 걸려도 만료 뒤의 틱은 나가지
+// 않는다 — 부분 틱은 없다(정수 틱 규칙, 따로 검사하는 줄은 필요 없다). 출혈로
+// 죽은 몬스터는 지우고, 대상이었다면 다음 대상을 고른다. 사거리는 보지 않는다 — 한 번 걸리면 멀어져도 돈다.
+function bleedStep(state) {
+  if (state.defeated || !state.monsters.some((m) => m.bleed)) return state;
+
+  const monsters = [];
+  for (const m of state.monsters) {
+    if (!m.bleed) {
+      monsters.push(m);
+      continue;
+    }
+
+    const { endTick, nextTickTick } = m.bleed;
+    const ticks = state.tick >= nextTickTick;
+    const hp = ticks ? m.hp - BLEED_TICK_DAMAGE : m.hp;
+    if (hp <= 0) continue;
+
+    const bleed =
+      state.tick >= endTick
+        ? null
+        : { endTick, nextTickTick: ticks ? nextTickTick + BLEED_TICK_INTERVAL : nextTickTick };
+    monsters.push({ ...m, hp, bleed });
+  }
+
+  return retargetIfLost({ ...state, monsters });
 }
 
 
@@ -551,8 +619,10 @@ function queuedSkillStep(state) {
 
 
 // 시간이 한 틱 흐른 뒤 전투 쪽에서 일어나는 일: 어그로를 붙이고, 5틱 박자에는 걷고,
-// 몬스터가 때리고, 채널이 한 틱 돌고, 기억해 둔 스킬이 나가고, 마지막에 플레이어의 자동공격이
-// 나간다(이 순서). 채널이 기억해 둔 스킬보다 먼저라서, 채널의 마지막 틱이 끝난 뒤에야 입력이 나간다.
+// 몬스터가 때리고, 채널이 한 틱 돌고, 출혈이 틱하고, 기억해 둔 스킬이 나가고, 마지막에 플레이어의
+// 자동공격이 나간다(이 순서). 채널이 기억해 둔 스킬보다 먼저라서, 채널의 마지막 틱이 끝난 뒤에야 입력이
+// 나간다. 출혈은 채널 뒤라서 같은 틱에 채널이 죽인 몬스터에게는 틱하지 않고, 출혈로 죽은 몬스터는 기억해
+// 둔 스킬의 대상 계산에서 이미 빠져 있다.
 //
 // 추격 몬스터는 전원이 틱 5의 배수에 함께 움직인다(2026-11-17). 몬스터마다 타이머를
 // 두지 않아 상태 필드가 늘지 않는다. 대신 어그로가 붙은 뒤 첫 걸음까지 최대 0.5초가 걸린다.
@@ -561,7 +631,7 @@ function queuedSkillStep(state) {
 function advanceCombat(state) {
   const pulled = pullPacks(state);
   const chased = pulled.tick % MOVE_TICKS === 0 ? chaseStep(pulled) : pulled;
-  return playerAttackStep(queuedSkillStep(channelStep(attackStep(chased))));
+  return playerAttackStep(queuedSkillStep(bleedStep(channelStep(attackStep(chased)))));
 }
 
 

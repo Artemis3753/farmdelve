@@ -188,6 +188,8 @@ function DungeonRun({ templates, onLeave, onRetry }) {
       if (!inside) className += ' tile-void'
       if (monster) className += ' tile-monster'
       if (monster && monster.id === state.targetId) className += ' tile-target'
+      // 출혈은 틱마다 조용히 체력을 깎아서, 표시가 없으면 어느 몬스터에 걸려 있는지 알 길이 없다.
+      if (monster && monster.bleed !== null) className += ' tile-bleed'
       if (isPlayer) className += ' tile-player'
       // Brutal Swing이 닿는 6칸을 연하게 보여 준다. 바라보는 방향이 왜 중요한지 눈으로 보이게 하려는 것이다.
       if (inside && inSwingArea(state.player, x, y)) className += ' tile-swing'

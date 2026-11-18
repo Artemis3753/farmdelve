@@ -81,6 +81,8 @@ describe('createInitialState — initial layout (seam A)', () => {
         attackDamage: 10,
         attackTicks: 20,
         nextAttackTick: 0,
+        // 출혈은 아직 걸리지 않았다.
+        bleed: null,
       },
     ])
   })
@@ -280,8 +282,21 @@ describe('combatReducer — movement (seam B)', () => {
     // (queuing), 기억해 둔 스킬이 틱 5에 나가는 경로(queuedCast)도 지나게 한다.
     const queuing = deepFreeze({ ...hunting, gcdReadyTick: 6 })
     const queuedCast = deepFreeze({ ...hunting, gcdReadyTick: 5, queuedSkill: 'furiousThrust' })
+    // 출혈 경로: 분노 2c로 Whirling Slash를 거는 경로(applying), 이미 걸린 출혈을 갱신하는 경로
+    // (refreshing, 틱 19에서 한 틱 흐르면 20이라 출혈 틱도 나간다), 출혈 틱으로 죽는 경로(bleedKilling).
+    const applying = deepFreeze({ ...hunting, rage: 20 })
+    const refreshing = deepFreeze({
+      ...applying,
+      tick: 19,
+      monsters: applying.monsters.map((m) => ({ ...m, bleed: { endTick: 100, nextTickTick: 20 } })),
+    })
+    const bleedKilling = deepFreeze({
+      ...refreshing,
+      monsters: refreshing.monsters.map((m) => ({ ...m, hp: 10 })),
+    })
     const actions = [
       { type: 'useSkill', skill: 'furiousThrust' },
+      { type: 'useSkill', skill: 'whirlingSlash' },
       { type: 'tick' },
       { type: 'moveStart', direction: 'left' },
       // 누르는 즉시 걷는 경로(walking)와 막히는 경로(blocked)를 각각 지나게 한다.
@@ -296,7 +311,7 @@ describe('combatReducer — movement (seam B)', () => {
 
     const states = [
       walking, blocked, pulling, chasing, attacking, dying, defeated, hunting, killing,
-      queuing, queuedCast,
+      queuing, queuedCast, applying, refreshing, bleedKilling,
     ]
     for (const state of states) {
       const snapshot = structuredClone(state)
@@ -1310,14 +1325,16 @@ describe('combatReducer — Whirling Slash channel (seam G)', () => {
     const cast = castSpin(state) // 5c: 틱 35까지
 
     // 5틱에 누른 Furious Thrust는 끝나려면 30틱이 남아 버려진다: 틱 피해(5 × 40 = 200)만 남는다.
+    // (대상이 사거리 안이라 출혈도 걸린다: 45틱까지 출혈 틱 20·40의 100이 더 깎인다. 출혈은 H에서 본다.)
     const early = castFurious(runTicks(cast, 5))
-    expect(runTicks(early, 40).monsters[0].hp).toBe(800)
+    expect(runTicks(early, 40).monsters[0].hp).toBe(700)
 
     // 틱 32(3틱 남음)에 누르면 기억했다가 마지막 틱(35) 뒤에 나간다: 34틱까지는 160, 35틱에 200 + 80.
+    // 여기에 출혈 틱 20의 50이 더 들어가 있다.
     const queued = castFurious(runTicks(cast, 32))
-    expect(runTicks(queued, 2).monsters[0].hp).toBe(840)
+    expect(runTicks(queued, 2).monsters[0].hp).toBe(790)
     const fired = runTicks(queued, 3)
-    expect(fired.monsters[0].hp).toBe(720)
+    expect(fired.monsters[0].hp).toBe(670)
     expect(fired.rage).toBe(10)
 
     // 1c는 0.7초(7틱)가 아니라 GCD 1초(10틱)다: 틱 7에 누른 입력은 틱 10에 나간다.
@@ -1328,15 +1345,16 @@ describe('combatReducer — Whirling Slash channel (seam G)', () => {
 
     // 기억해 둔 것이 또 Whirling Slash여도 앞 채널의 마지막 틱이 먼저 끝난 뒤에 시작한다(마지막 틱이
     // 덮어써져 사라지면 안 된다). 틱 32에 분노를 2c로 채워 누르면: 틱 35에 앞 채널이 끝나며 800과
-    // 회복 20, 곧바로 새 채널이 시작해 분노가 0이 되고, 틱 49에 둘째 채널(2틱)이 끝나 720과 회복 20.
+    // 회복 20, 곧바로 새 채널이 시작해 분노가 0이 되고, 틱 49에 둘째 채널(2틱)이 끝나 회복 20.
+    // 체력은 출혈 틱 20·40의 100이 더 깎여 있다: 틱 35에 750, 틱 49에 620.
     const hurt = { ...state, playerHp: 500 }
     const refilled = castSpin({ ...runTicks(castSpin(hurt), 32), rage: 20 })
     const atEnd = runTicks(refilled, 3)
-    expect(atEnd.monsters[0].hp).toBe(800)
+    expect(atEnd.monsters[0].hp).toBe(750)
     expect(atEnd.playerHp).toBe(520)
     expect(atEnd.rage).toBe(0)
     const secondDone = runTicks(refilled, 17)
-    expect(secondDone.monsters[0].hp).toBe(720)
+    expect(secondDone.monsters[0].hp).toBe(620)
     expect(secondDone.playerHp).toBe(540)
   })
 
@@ -1350,9 +1368,10 @@ describe('combatReducer — Whirling Slash channel (seam G)', () => {
     expect(after7.player.y).toBe(2)
     expect(after7.monsters[0].hp).toBe(960)
 
-    // 걷는 중에 누른 Furious Thrust(틱 10, 11틱 남음)는 버려진다: 끝까지 틱 피해 120만 들어간다.
+    // 걷는 중에 누른 Furious Thrust(틱 10, 11틱 남음)는 버려진다: 끝까지 틱 피해 120만 들어가고, 걸어서
+    // 멀어져도 출혈은 돌아 틱 20의 50이 더 깎인다.
     const pressed = castFurious(runTicks(walking, 10))
-    expect(runTicks(pressed, 11).monsters[0].hp).toBe(880)
+    expect(runTicks(pressed, 11).monsters[0].hp).toBe(830)
   })
 
   test('G10: an enemy killed by a tick is removed, and the target moves on only if the target died', () => {
@@ -1396,7 +1415,7 @@ describe('combatReducer — Whirling Slash channel (seam G)', () => {
     const cast = castSpin(state)
 
     expect(runTicks(cast, 1).monsters[0].hp).toBe(960)
-    expect(runTicks(cast, 21).monsters[0].hp).toBe(1000 - 80 - 120)
+    expect(runTicks(cast, 21).monsters[0].hp).toBe(1000 - 80 - 120 - 50) // 마지막 50은 출혈 틱 20
 
     // 같은 틱(7)에 채널 틱과 평타가 겹치면 채널 틱이 먼저다. 0번(대상, hp 40)이 채널 틱에 죽고
     // 대상이 1번으로 넘어가서, 평타는 1번을 때린다: 채널 40 + 평타 40 = 920. (평타가 먼저였다면
@@ -1406,5 +1425,207 @@ describe('combatReducer — Whirling Slash channel (seam G)', () => {
       nextPlayerAttackTick: 7,
     }
     expect(runTicks(castSpin(sameTick), 7).monsters.map((m) => m.hp)).toEqual([920])
+  })
+})
+
+
+// Whirling Slash의 출혈(2026-11-18 합의). 채널을 누르는 순간 선택한 대상이 사거리 1칸 안이면 그
+// 대상 한 명에게 출혈을 건다. 지속시간은 4초 + 쓴 포인트당 2초, 2초(20틱)마다 한 번 50, 방어력을
+// 무시한다. 이미 걸려 있으면 pandemic: 새 만료 = 지금 + 새 지속시간 + min(남은 시간, 새 지속시간의
+// 30%), 다음 틱 시각은 그대로. 부분 틱은 없다(틱은 다음 틱 시각이 만료 이전일 때만 나간다). 사거리는
+// 거는 순간에만 본다. 출혈은 몬스터 객체의 bleed 필드에 { endTick, nextTickTick }로 든다.
+//
+// 아래 1c 기준의 숫자는 누른 틱이 0이고, 1c 채널(틱 7에 40)이 끼어 있다: 출혈 틱은 20·40·60.
+const castBleed = (specs, rage, options = {}) => castSpin(spinWith(specs, { rage, targetId: 0, ...options }))
+
+describe('combatReducer — Whirling Slash bleed (seam H)', () => {
+  test('H1: pressing with a target in range puts a bleed on it, timed from the tick of the press', () => {
+    const cast = castBleed([{ x: 6, y: 4 }], 10)
+    expect(cast.monsters[0].bleed).toEqual({ endTick: 60, nextTickTick: 20 })
+
+    // 누른 틱이 0이 아니면 그 틱부터 센다.
+    const later = castSpin({ ...runTicks(spinWith([{ x: 6, y: 4 }], { rage: 10, targetId: 0 }), 3) })
+    expect(later.monsters[0].bleed).toEqual({ endTick: 63, nextTickTick: 23 })
+  })
+
+  test('H2: the duration is 4 s plus 2 s per point — 1c 6 s, 3c 10 s, 5c 14 s', () => {
+    expect(castBleed([{ x: 6, y: 4 }], 10).monsters[0].bleed.endTick).toBe(60)
+    expect(castBleed([{ x: 6, y: 4 }], 30).monsters[0].bleed.endTick).toBe(100)
+    expect(castBleed([{ x: 6, y: 4 }], 50).monsters[0].bleed.endTick).toBe(140)
+  })
+
+  test('H3: it hits for 50 every 20 ticks, the last tick lands on the end, and then the bleed is gone', () => {
+    const cast = castBleed([{ x: 6, y: 4 }], 10)
+
+    // 채널 틱 40이 틱 7에 먼저 들어가 있다.
+    expect(runTicks(cast, 19).monsters[0].hp).toBe(960)
+    expect(runTicks(cast, 20).monsters[0].hp).toBe(910)
+    expect(runTicks(cast, 39).monsters[0].hp).toBe(910)
+    expect(runTicks(cast, 40).monsters[0].hp).toBe(860)
+    expect(runTicks(cast, 59).monsters[0].hp).toBe(860)
+
+    // 마지막 틱(60)이 만료 시각에 나가고, 그 뒤에는 출혈이 없다.
+    const done = runTicks(cast, 60)
+    expect(done.monsters[0].hp).toBe(810)
+    expect(done.monsters[0].bleed).toBeNull()
+    expect(runTicks(cast, 200).monsters[0].hp).toBe(810)
+
+    // 5c: 채널 200 + 출혈 7틱 350.
+    const five = castBleed([{ x: 6, y: 4 }], 50)
+    expect(runTicks(five, 200).monsters[0].hp).toBe(450)
+  })
+
+  test('H4: the bleed ignores armor, while the channel tick next to it does not', () => {
+    // 방어력 500: 채널 틱은 40 × (1 − 500/1500) = 26.67 → 27이고, 출혈은 방어력과 무관하게 50 × 3.
+    const cast = castBleed([{ x: 6, y: 4, armor: 500 }], 10)
+
+    expect(runTicks(cast, 60).monsters[0].hp).toBe(1000 - 27 - 150)
+  })
+
+  test('H5: only the selected target is bled, even if others stand in range', () => {
+    const cast = castBleed([{ x: 6, y: 4 }, { x: 6, y: 3 }], 10)
+
+    expect(cast.monsters[0].bleed).toEqual({ endTick: 60, nextTickTick: 20 })
+    expect(cast.monsters[1].bleed).toBeNull()
+    // 둘 다 채널 틱 40은 맞고, 출혈은 선택한 쪽만 맞는다.
+    expect(hpsOf(runTicks(cast, 60))).toEqual([810, 960])
+  })
+
+  test('H6: with no target, or a target out of range, nothing is bled and the channel still runs', () => {
+    // 대상이 없다.
+    const noTarget = castBleed([{ x: 6, y: 4 }], 10, { targetId: null })
+    expect(noTarget.monsters[0].bleed).toBeNull()
+    expect(noTarget.rage).toBe(0)
+    expect(runTicks(noTarget, 60).monsters[0].hp).toBe(960)
+
+    // 대상이 사거리 밖이다: 거리 4, 그리고 사거리 바로 밖인 거리 2.
+    const far = castBleed([{ x: 9, y: 4 }], 10)
+    expect(far.monsters[0].bleed).toBeNull()
+    expect(runTicks(far, 60).monsters[0].hp).toBe(1000)
+    expect(castBleed([{ x: 7, y: 4 }], 10).monsters[0].bleed).toBeNull()
+
+    // 사거리 안에 다른 적이 있어도 선택한 대상이 멀면 아무도 출혈이 아니다.
+    const other = castBleed([{ x: 6, y: 4 }, { x: 9, y: 4 }], 10, { targetId: 1 })
+    expect(other.monsters.map((m) => m.bleed)).toEqual([null, null])
+    expect(hpsOf(runTicks(other, 60))).toEqual([960, 1000])
+  })
+
+  test('H7: once applied, the bleed keeps ticking after the target leaves the range', () => {
+    const cast = castBleed([{ x: 6, y: 4 }], 10)
+    const away = { ...cast, monsters: cast.monsters.map((m) => ({ ...m, x: 30 })) }
+
+    // 채널 틱은 헛되고(40 없음), 출혈 3틱 150만 들어간다.
+    expect(runTicks(away, 59).monsters[0].bleed).not.toBeNull()
+    expect(runTicks(away, 60).monsters[0].hp).toBe(850)
+  })
+
+  test('H8: refreshing in the last 30% carries all the time left over and keeps the tick schedule', () => {
+    const first = runTicks(castBleed([{ x: 6, y: 4 }], 10), 45) // 틱 20·40이 지났고 남은 시간은 15틱
+    const refreshed = castSpin({ ...first, rage: 10 })
+
+    // 새 만료 = 45 + 60 + 15. 다음 틱 시각은 첫 출혈의 60 그대로다(새로 45 + 20이 아니다).
+    expect(refreshed.monsters[0].bleed).toEqual({ endTick: 120, nextTickTick: 60 })
+
+    // 틱 60·80·100·120 네 번이 더 나간다: 채널 40 두 번과 출혈 6틱 300을 뺀 620.
+    expect(runTicks(refreshed, 200).monsters[0].hp).toBe(620)
+  })
+
+  test('H9: refreshing earlier carries only 30% of the new duration, and there is no partial tick', () => {
+    const first = runTicks(castBleed([{ x: 6, y: 4 }], 50), 40) // 틱 40까지 지났고 남은 시간은 100틱
+
+    // 5c로 다시 걸면 14초의 30% = 42틱만 이어 붙는다: 40 + 140 + 42.
+    expect(castSpin({ ...first, rage: 50 }).monsters[0].bleed).toEqual({ endTick: 222, nextTickTick: 60 })
+
+    // 1c로 다시 걸면 6초의 30% = 18틱: 40 + 60 + 18 = 118. 다음 틱이 60·80·100이고 120은 만료(118)
+    // 뒤라서 나가지 않는다: 채널 200 + 40, 출혈 5틱 250을 뺀 510. 부분 틱이 있다면 더 깎인다.
+    const short = castSpin({ ...first, rage: 10 })
+    expect(short.monsters[0].bleed).toEqual({ endTick: 118, nextTickTick: 60 })
+    const done = runTicks(short, 200)
+    expect(done.monsters[0].hp).toBe(510)
+    expect(done.monsters[0].bleed).toBeNull()
+  })
+
+  test('H10: a monster killed by a bleed tick is removed, and the target moves on if it was the target', () => {
+    // 0번(대상)은 채널 틱(7)에 hp 50이 되고, 출혈 틱(20)에 정확히 0이 되어 죽는다(0도 죽음이다).
+    const cast = castBleed([{ x: 6, y: 4, hp: 90 }, { x: 6, y: 3 }], 10)
+
+    expect(runTicks(cast, 19).monsters.map((m) => m.id)).toEqual([0, 1])
+    const dead = runTicks(cast, 20)
+    expect(dead.monsters.map((m) => m.id)).toEqual([1])
+    expect(dead.targetId).toBe(1)
+  })
+
+  test('H11: on a tick where the channel and a bleed both land, the channel comes first', () => {
+    // 틱 7에 채널과 출혈이 겹치고, hp 40인 적은 채널 틱(40)에 죽는다. 채널이 먼저면 한 틱이 맞았으니
+    // 끝날 때 회복(20)이 나가고, 출혈이 먼저면 적이 먼저 죽어 채널이 아무도 못 맞혀 회복이 없다.
+    const state = {
+      ...spinWith([{ x: 6, y: 4, hp: 40, bleed: { endTick: 100, nextTickTick: 7 } }], { rage: 10 }),
+      playerHp: 500,
+    }
+    const after = runTicks(castSpin(state), 7)
+
+    expect(after.monsters).toEqual([])
+    expect(after.playerHp).toBe(520)
+  })
+
+  test('H12: a press remembered in the GCD is applied when it fires, counted from that tick', () => {
+    // Furious Thrust(틱 0, 분노 1c → 2c) 뒤 틱 8에 누른 Whirling Slash는 틱 10에 나간다. 2c라서
+    // 지속시간은 8초: 10 + 80 = 90, 첫 틱은 10 + 20 = 30.
+    const first = castFurious(spinWith([{ x: 6, y: 4 }], { rage: 10, targetId: 0 }))
+    const queued = castSpin(runTicks(first, 8))
+    expect(queued.monsters[0].bleed).toBeNull()
+
+    expect(runTicks(queued, 2).monsters[0].bleed).toEqual({ endTick: 90, nextTickTick: 30 })
+  })
+
+  test('H13: a bleed tick that kills the target comes before a remembered skill, which then finds no target', () => {
+    // 틱 10에 출혈 틱(50)이 hp 40인 대상을 죽이고, 같은 틱에 기억해 둔 Furious Thrust가 나갈 차례다.
+    // 출혈이 먼저면 대상이 없어 스킬은 아무 일도 안 한다(분노 그대로). 스킬이 먼저였다면 대상을 때려
+    // 죽이고 분노 1c를 얻는다.
+    const state = {
+      ...spinWith([{ x: 6, y: 4, hp: 40, bleed: { endTick: 100, nextTickTick: 10 } }], { rage: 0, targetId: 0 }),
+      tick: 9,
+      gcdReadyTick: 10,
+      queuedSkill: 'furiousThrust',
+    }
+    const after = runTicks(state, 1)
+
+    expect(after.monsters).toEqual([])
+    expect(after.rage).toBe(0)
+  })
+
+  test('H14: a bleed tick that kills the target comes before the auto-attack, which then swings at the next target', () => {
+    // 틱 20에 출혈이 0번(대상, hp 50)을 죽이고, 같은 틱에 자동공격이 나갈 차례다. 출혈이 먼저면 대상이
+    // 1번으로 넘어가 자동공격은 1번을 40 때린다. 자동공격이 먼저였다면 0번을 때리고(50 → 10) 출혈이
+    // 마저 죽여서 1번은 그대로 1000이다.
+    const state = {
+      ...spinWith(
+        [{ x: 6, y: 4, hp: 50, bleed: { endTick: 100, nextTickTick: 20 } }, { x: 6, y: 3 }],
+        { rage: 0, targetId: 0 },
+      ),
+      tick: 19,
+      nextPlayerAttackTick: 20,
+    }
+    const after = runTicks(state, 1)
+
+    expect(after.monsters.map((m) => m.id)).toEqual([1])
+    expect(after.monsters[0].hp).toBe(960)
+  })
+
+  test('H15: a player killed on the tick of a bleed tick does not bleed the monster', () => {
+    // 몬스터가 틱 7에 때려 체력 10을 0으로 만든다(몬스터 공격이 먼저). 같은 틱의 출혈 틱은 나가지 않고,
+    // 죽은 뒤에는 시간이 흘러도 아무 일도 없다(G11과 같은 규칙).
+    const state = {
+      ...spinWith(
+        [{ x: 6, y: 4, nextAttackTick: 7, bleed: { endTick: 100, nextTickTick: 7 } }],
+        { rage: 0 },
+      ),
+      playerHp: 10,
+    }
+    const dead = runTicks(state, 7)
+
+    expect(dead.defeated).toBe(true)
+    expect(dead.monsters[0].hp).toBe(1000)
+    expect(runTicks(dead, 30).monsters[0].hp).toBe(1000)
   })
 })
