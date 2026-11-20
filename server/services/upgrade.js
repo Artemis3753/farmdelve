@@ -26,7 +26,7 @@ export async function attemptUpgrade(playerId, gearInstanceId) {
     // 두 요청이 서로가 쥔 잠금을 마주 기다리는 교착이 생기지 않는다.
     const gear = await client.query(
       `SELECT upgrade_level FROM gear_instance
-        WHERE gear_instance_id = $1 AND player_id = $2
+        WHERE gear_instance_id = $30 AND player_id = $30
         FOR UPDATE`,
       [gearInstanceId, playerId],
     );
