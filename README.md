@@ -1,5 +1,7 @@
 # 🌾 FarmDelve
 
+[![CI](https://github.com/Artemis3753/farmdelve/actions/workflows/ci.yml/badge.svg)](https://github.com/Artemis3753/farmdelve/actions/workflows/ci.yml)
+
 A single-player farming game with tiered dungeons and gear upgrading.
 
 ## 🚧 Status
@@ -9,9 +11,11 @@ and equipping**, and **farming**. You can plant a crop, wait for it to grow,
 harvest it for produce and gold, refine the produce into an upgrade material,
 and spend that material on a `+1` roll that can fail.
 
-Dungeons have their tables and two endpoints — enter a run, complete it — but
-the screen is still a skeleton: the layout is drawn with placeholder values
-and nothing on it talks to the API yet. Combat is still on paper.
+The dungeon screen runs combat in the browser. Arrow keys or WASD move one
+tile at a time, monster packs aggro and chase, both sides auto-attack, and four
+skills share a global cooldown: two build Rage, two spend it, and one of the
+spenders leaves a bleed. A run can end in defeat but not yet in a clear, and
+the screen does not call the two dungeon endpoints yet.
 
 ## 🤖 Working with Claude Code
 
@@ -64,6 +68,9 @@ PostgreSQL          15 tables
 - `server/db/` — `schema.sql` and `seed.sql`. No migration tool.
 - `client/src/screens/` — one file per screen, switched by `useState` rather
   than a router.
+- `client/src/combat/rules.js` — combat as a reducer with no randomness and no
+  clock of its own. `Dungeon.jsx` dispatches a tick ten times a second, plus
+  the key presses.
 
 ## 🔌 API
 
@@ -95,11 +102,14 @@ and returns `{ upgraded: false }`.
 - **Dungeon clears are self-reported.** The client says whether a run was
   cleared; the server only keeps the clock. Accepted for a portfolio game —
   a leaderboard built on these runs could be cheated.
-- Combat and the leaderboard are designed but not built.
+- **Combat stays in the browser.** Nothing about a fight reaches the server
+  yet, and there is no way to clear a run.
+- The leaderboard is designed but not built.
 
 ## 🎯 Planned
 
-- ⚔️ Real-time combat
+- ⚔️ Finishing combat — clearing a run and reporting it to the server
+- 🧰 TypeScript on the server, Docker, and a public deployment on AWS
 - 🗡️ Three weapon specializations — Scythe, Crossbow, Watering Can
 - 🏰 Playable dungeon runs
 - 🏆 Leaderboard
