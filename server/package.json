@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node --env-file=.env index.js",
+    "start": "node --env-file=.env dist/index.js",
     "test": "vitest run",
+    "build": "tsc",
     "db:reset": "set -a && . ./.env && set +a && psql -v ON_ERROR_STOP=1 \"$DATABASE_URL\" -f db/schema.sql && psql -v ON_ERROR_STOP=1 \"$DATABASE_URL\" -f db/seed.sql"
   },
   "keywords": [],
@@ -17,6 +18,10 @@
     "pg": "^8.23.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   }
 }
