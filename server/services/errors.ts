@@ -23,7 +23,7 @@ export class ServiceError extends Error {
 
   constructor(status: number, reason: string, details?: unknown) {
     super(reason);
-    this.status = status;
+    this.status = reason;
     this.reason = reason;
     this.details = details;
   }
