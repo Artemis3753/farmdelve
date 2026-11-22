@@ -3,7 +3,7 @@
 Working document. Tracks what is decided, what is still open, and what is
 deliberately out of scope. Updated as design sessions go.
 
-Last updated: 2026-11-18
+Last updated: 2026-11-22
 
 ---
 
@@ -837,6 +837,25 @@ what was written on 2026-08-25.
   neither exists to configure. Fourteen bindings: 6 rotation, 1 mobility,
   2 consumables, 4 movement, ESC.
 
+### Art and sound assets (2026-11-22)
+
+- **Images: generated with Google Gemini (Nano Banana), then cleaned up in
+  [Pixel Snapper](https://spritefusion.com/pixel-snapper).** This covers
+  most sprites, monsters included, which closes the open question of where
+  monster art comes from. Pixel Snapper is a free, open-source tool that
+  snaps AI-generated pixel art back onto an even grid and trims its palette;
+  anything it leaves rough gets a hand pass in a pixel editor.
+- **Sound effects: ElevenLabs.**
+- **Why this pipeline:** the 3/4-view mockup (2026-11-19) showed that a hero
+  scaled up from a different source has pixels twice the size of the pixelfx
+  effects, so the two styles clash. A tool that forces one pixel grid aims
+  at exactly that. Whether its output lines up with the effects at our tile
+  size is **not yet tested** — the first monster is the test.
+- **AI-generated art is disclosed in the README.**
+- **Timing:** after the deployment deadline (2026-12-10). Art and sound do
+  not block the infrastructure work.
+- Skill effects stay with pixelfx (see the bleed section above).
+
 ### Deployment (2026-08-25)
 
 - **Render or Railway.** Both run a normal always-on Express server and
@@ -1243,6 +1262,14 @@ Table list is settled — see `data-model.md`. What is left:
   shape has to be settled early.
 - **Legendary items** — per-item unique effects, too large a scope.
 - **Multiplayer / tank-healer-dps roles** — possible future expansion.
+- **A commercial (Steam) release** (2026-11-22). The project is built to
+  show backend work: an Express server, PostgreSQL, and server-decided
+  upgrade rolls. A paid single-player game would want none of that — it
+  would mean either paying for a server indefinitely or reworking storage
+  for a desktop build — and the content gap to a sellable game is months of
+  full-time work. The portfolio version gets finished as designed; a
+  release would be a separate project built on top of it. Playtesting the
+  public URL with a few friends is in scope.
 - **Axe** — dropped as the melee weapon, kept as a candidate for a fourth
   weapon or a talent.
 - **Storing combat logs server-side** alongside dungeon records — would
