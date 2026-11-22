@@ -23,6 +23,25 @@ and the screen does not call the two dungeon endpoints yet.
 
 ## 🏃 Running it locally
 
+### With Docker
+
+Needs only Docker with Compose. Copy `.env.example` to `.env` at the repo
+root and set a password — letters and digits only, since it goes into a
+connection URL.
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Then open http://localhost:3001. One image serves both the built client and
+the API; PostgreSQL runs in a second container whose port is not published to
+the host. The schema and seed load only on the first start, while the data
+volume is empty — after changing `schema.sql`, `docker compose down -v` starts
+over.
+
+### Without Docker
+
 Built against **Node 26** and **PostgreSQL 17**; older versions are untested.
 Create a database first, then a `server/.env` file with three keys:
 
@@ -33,8 +52,9 @@ TIME_SCALE=10
 ```
 
 `TIME_SCALE` divides every crop's growth time, so wheat takes 2 minutes instead
-of 20 while developing. There is no fallback for any of these — the server
-refuses to start rather than quietly connecting to the wrong database.
+of 20 while developing. `DATABASE_URL` and `TIME_SCALE` have no fallback —
+the server refuses to start rather than quietly connecting to the wrong
+database. `PORT` falls back to 3001.
 
 ```bash
 cd server
@@ -78,6 +98,11 @@ leaves the tests out and builds into `dist/`. Each query declares the shape of
 its rows (`pool.query<{ slot: string }>`) — a compile-time promise, not a
 runtime check. The client stays JavaScript.
 
+Outside development, Express also serves the built client from `client/dist`,
+so the pages and `/api` share one origin and there is still no CORS. The
+`Dockerfile` builds the client and the server in separate stages and keeps
+only their output and the production dependencies in the final image.
+
 GitHub Actions runs on every pull request: the client is built, linted and
 tested, and the server is built, type-checked and tested against a PostgreSQL 17
 service container. `main` only accepts a pull request once both jobs pass.
@@ -118,7 +143,7 @@ really were spent, so it commits and returns `{ upgraded: false }`.
 The finish line is fixed in the Definition of Done at the end of
 [`docs/design-backlog.md`](docs/design-backlog.md). What is left on it:
 
-- 🧰 Docker, and a public deployment on AWS
+- ☁️ A public deployment on AWS
 - 🏰 One complete dungeon run — tier 1, from entering to clearing, rewards and an upgrade
 - 🏆 Leaderboard
 - 🎨 Sprites for the hero and monsters, and a few sound effects
