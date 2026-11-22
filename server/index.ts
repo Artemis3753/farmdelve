@@ -1,3 +1,4 @@
+import path from 'node:path';
 import express from 'express';
 import pool from './db/pool.js';
 import { attemptUpgrade } from './services/upgrade.js';
@@ -286,6 +287,23 @@ app.get('/api/player', async (req, res) => {
     }
   }
 });
+
+// 클라이언트 빌드 결과(client/dist)를 같은 서버가 내준다(D3, 2026-11-20 결정).
+// 브라우저가 출처 하나하고만 대화하므로 배포에서도 CORS가 필요 없다 —
+// vite.config.js의 proxy 주석이 예고해 둔 그 길이다.
+//
+// 경로는 이 파일(dist/index.js) 위치에서 두 칸 올라간 곳이다. 로컬은
+// server/dist → client/dist, image는 /app/server/dist → /app/client/dist라
+// 두 곳의 폴더 배치를 같게 맞춰 두면 환경 변수 없이 둘 다 맞는다.
+//
+// API 라우트보다 아래에 둔다. 위에 두면 /api 요청마다 먼저 디스크를 뒤지고
+// 넘어가는데, 순서상 API가 정적 파일에 가려질 일도 아예 없게 하는 편이 낫다.
+//
+// 모르는 경로를 index.html로 돌려주는 폴백(/{*splat})은 두지 않는다. 클라이언트에
+// URL 라우팅이 없어 화면이 전부 / 하나라 필요가 없고, 두면 /api 오타까지 200 +
+// HTML로 나가 디버깅이 헷갈린다. 개발 중(vite가 5173에서 서빙)에는 client/dist가
+// 없을 수 있는데, 그러면 이 미들웨어가 그냥 다음으로 넘겨 404가 된다.
+app.use(express.static(path.join(import.meta.dirname, '../../client/dist')));
 
 app.listen(port, () => {
   console.log(`Server listening on http://localhost:${port}`);
