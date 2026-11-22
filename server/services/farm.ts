@@ -23,7 +23,10 @@ const SEED_PER_PLANT = 1;
 // crop_template이 정한다. 클라이언트가 보내게 하면 "감자 씨앗을 태워 밀을
 // 심는" 요청이 만들어지고, 그건 장착에서 슬롯을 서버가 읽기로 한 것과 같은
 // 이유로 막는다. 게다가 검증하려면 어차피 같은 행을 읽어야 해서 아끼는 것도 없다.
-export async function plantSeed(playerId, plotNumber, cropTemplateId) {
+//
+// 반환 타입은 equip과 같은 이유로 적지 않는다(2026-11-22 결정). 이 파일 제네릭의
+// 숫자 열은 schema.sql에서 전부 INTEGER라 number다.
+export async function plantSeed(playerId: number, plotNumber: number, cropTemplateId: number) {
   const client = await pool.connect();
 
   try {
@@ -34,7 +37,11 @@ export async function plantSeed(playerId, plotNumber, cropTemplateId) {
     //
     // player_plot은 25행이 미리 깔려 있어서 여기서 INSERT가 아니라 UPDATE를
     // 하게 된다. 없는 행은 FOR UPDATE로 잠글 수 없다는 것이 그 설계의 근거였다.
-    const plot = await client.query(
+    //
+    // null이 붙는 이유: 빈 칸은 crop_template_id가 NULL이다. 아래 !== null 검사가
+    // 바로 그 경우를 409로 거르는 자리라, 타입에 null이 없으면 검사가 왜 있는지가
+    // 타입에서 안 보인다.
+    const plot = await client.query<{ crop_template_id: number | null }>(
       `SELECT crop_template_id FROM player_plot
         WHERE player_id = $1 AND plot_number = $2
         FOR UPDATE`,
@@ -52,7 +59,7 @@ export async function plantSeed(playerId, plotNumber, cropTemplateId) {
     }
 
     // 어느 씨앗을 태울지, 그리고 이 작물이 실재하는지를 여기서 읽는다.
-    const crop = await client.query(
+    const crop = await client.query<{ seed_stack_template_id: number }>(
       `SELECT seed_stack_template_id FROM crop_template
         WHERE crop_template_id = $1`,
       [cropTemplateId],
@@ -70,7 +77,9 @@ export async function plantSeed(playerId, plotNumber, cropTemplateId) {
     // 모자라면 여기서 409를 던지고 아래 catch가 전부 롤백한다.
     const seedLeft = await spendStack(client, playerId, seedId, SEED_PER_PLANT);
 
-    const planted = await client.query(
+    // 여기 두 시각에는 null이 없다. 방금 심어서 planted_at이 찼고, 작물이 있다는
+    // 것도 위에서 확인했다. Date인 이유는 player.ts의 plantedAt과 같다.
+    const planted = await client.query<{ planted_at: Date; readyAt: Date }>(
       `UPDATE player_plot
           SET crop_template_id = $3, planted_at = NOW()
         WHERE player_id = $1 AND plot_number = $2
@@ -110,7 +119,7 @@ export async function plantSeed(playerId, plotNumber, cropTemplateId) {
 //
 // 심기가 하나를 깎았다면 이쪽은 셋을 늘린다. 그래서 잠글 행도 늘어나는데,
 // 순서는 넓은 것에서 좁은 것으로 통일한다 — player → 밭 칸 → 스택.
-export async function harvestCrop(playerId, plotNumber) {
+export async function harvestCrop(playerId: number, plotNumber: number) {
   const client = await pool.connect();
 
   try {
@@ -118,7 +127,7 @@ export async function harvestCrop(playerId, plotNumber) {
 
     // 골드를 바꿀 것이므로 player 행을 먼저 잠근다. 아직 쓰지 않는 gold를 굳이
     // 여기서 읽는 이유는, 이 SELECT 자체가 잠금을 거는 수단이기 때문이다.
-    const player = await client.query(
+    const player = await client.query<{ gold: number }>(
       `SELECT gold FROM player WHERE player_id = $1 FOR UPDATE`,
       [playerId],
     );
@@ -137,7 +146,35 @@ export async function harvestCrop(playerId, plotNumber) {
     //
     // 성장 판정을 SQL이 한다. 심은 시각도 성장 기간도 DB에 있으니 거기서 끝내는
     // 것이 자연스럽고, 서버 시계와 DB 시계가 어긋나는 경우가 아예 사라진다.
-    const plot = await client.query(
+    //
+    // 제네릭이 두 모양 중 하나(|)인 이유: LEFT JOIN 때문에 빈 칸이면 c.* 열이
+    // 전부 NULL이고 ready도 NULL이다(NULL + 기간 <= now()는 NULL). 심긴 칸이면
+    // 전부 차 있다. 반쯤 찬 행은 없다 — schema.sql의 짝 CHECK가 crop_template_id와
+    // planted_at을 함께 비우거나 함께 채우게 하고, crop_template 쪽 열은 NOT NULL이다.
+    //
+    // 열마다 따로 number | null을 붙이면 이 "함께"가 타입에서 사라진다. 그러면
+    // 아래에서 cropTemplateId가 null이 아님을 확인한 뒤에도 cropStackId는 여전히
+    // null일 수 있다고 보고, gainStack(number를 받는다)에 넘기는 줄을 TS가 막는다.
+    // 두 모양으로 적어 두면 crop_template_id 하나만 확인해도 TS가 나머지 열까지
+    // 함께 좁혀 준다.
+    const plot = await client.query<
+      | {
+          crop_template_id: null;
+          crop_stack_template_id: null;
+          seed_stack_template_id: null;
+          crop_amount: null;
+          harvest_gold: null;
+          ready: null;
+        }
+      | {
+          crop_template_id: number;
+          crop_stack_template_id: number;
+          seed_stack_template_id: number;
+          crop_amount: number;
+          harvest_gold: number;
+          ready: boolean;
+        }
+    >(
       `SELECT p.crop_template_id,
               c.crop_stack_template_id, c.seed_stack_template_id,
               c.crop_amount, c.harvest_gold,
@@ -163,6 +200,11 @@ export async function harvestCrop(playerId, plotNumber) {
     } = plot.rows[0];
 
     // 빈 칸을 거두는 것은 실패다. 심기가 찬 칸을 거절한 것과 짝이 되는 자리다.
+    //
+    // 타입만 보면 이 검사가 없어도 빌드는 통과한다. 빈 칸은 ready도 null이라 아래
+    // !ready가 같은 모양을 걸러 내기 때문이다. 그래도 이 검사를 먼저 두는 이유는
+    // 응답의 reason을 갈라서다 — 빈 칸은 not_ready가 아니라 plot_empty다. 두 검사를
+    // 다 지우면 그때는 TS가 gainStack 줄을 막는다(2026-11-22 확인).
     if (cropTemplateId === null) {
       throw serviceError(409, 'plot_empty');
     }
@@ -183,7 +225,7 @@ export async function harvestCrop(playerId, plotNumber) {
     const cropLeft = await gainStack(client, playerId, cropStackId, cropAmount);
     const seedLeft = await gainStack(client, playerId, seedStackId, seedGain);
 
-    const gold = await client.query(
+    const gold = await client.query<{ gold: number }>(
       `UPDATE player SET gold = gold + $2
         WHERE player_id = $1
         RETURNING gold`,
