@@ -2,22 +2,29 @@
 // 바꾸지 않은 이유: 이 함수가 지키는 약속(재료는 롤백되지 않고, 장비 행은 잠긴다)은
 // DB가 지켜 주는 것이라, 가짜 DB로는 그 약속이 지켜지는지 확인할 수 없다.
 //
-// 올바른 DB에 붙었는지는 setup.js가 매 파일 시작 전에 확인한다.
+// 올바른 DB에 붙었는지는 setup.ts가 매 파일 시작 전에 확인한다.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import pool from '../db/pool.js';
 import { attemptUpgrade } from '../services/upgrade.js';
 
+// 가방 한 줄의 모양. readStacks의 쿼리 결과와 스냅샷 변수 두 곳이 같은 모양을
+// 써서 이름을 붙였다. 한 곳에서만 쓰였다면 쿼리 옆에 바로 적었을 것이다.
+type StackRow = { stack_template_id: number; amount: number };
+
 describe('attemptUpgrade', () => {
   // beforeEach에서 채우고 it에서 읽는다. 서로 다른 함수라 바깥에 선언해야 같이 본다.
-  let playerId;
-  let createdGearIds;
-  let createdPlayerIds;
-  let stacksSnapshot;
+  //
+  // 처음엔 비어 있다가 beforeEach가 채우므로 선언할 때 값을 줄 수 없다. 그래서
+  // 타입을 직접 적는다 — 값이 없으면 TS가 추론할 재료도 없다.
+  let playerId: number;
+  let createdGearIds: number[];
+  let createdPlayerIds: number[];
+  let stacksSnapshot: StackRow[];
 
   // 가방 전체를 "재료 번호 순"으로 읽는다. ORDER BY가 없으면 DB는 행 순서를 보장하지
   // 않아서, 내용이 같아도 순서만 달라 toEqual이 실패할 수 있다.
   async function readStacks() {
-    const result = await pool.query(
+    const result = await pool.query<StackRow>(
       `SELECT stack_template_id, amount FROM player_stack
         WHERE player_id = $1
         ORDER BY stack_template_id`,
@@ -26,8 +33,8 @@ describe('attemptUpgrade', () => {
     return result.rows;
   }
 
-  async function readUpgradeLevel(gearInstanceId) {
-    const result = await pool.query(
+  async function readUpgradeLevel(gearInstanceId: number) {
+    const result = await pool.query<{ upgrade_level: number }>(
       'SELECT upgrade_level FROM gear_instance WHERE gear_instance_id = $1',
       [gearInstanceId],
     );
@@ -44,8 +51,11 @@ describe('attemptUpgrade', () => {
   //
   // ownerId를 생략하면 시드 플레이어의 장비가 된다. "남의 장비" 테스트만 다른
   // 플레이어 번호를 넘긴다.
-  async function createGear(upgradeLevel, ownerId = playerId) {
-    const result = await pool.query(
+  //
+  // ownerId에 타입을 적지 않은 이유: 기본값 playerId가 number라 TS가 거기서
+  // 추론한다.
+  async function createGear(upgradeLevel: number, ownerId = playerId) {
+    const result = await pool.query<{ gear_instance_id: number }>(
       `INSERT INTO gear_instance (gear_template_id, player_id, upgrade_level)
        VALUES ((SELECT gear_template_id FROM gear_template WHERE name = $1), $2, $3)
        RETURNING gear_instance_id`,
@@ -60,7 +70,7 @@ describe('attemptUpgrade', () => {
   // 있어서 DEFAULT VALUES로 충분하다. player_id는 DB가 붙여 주는 번호라 RETURNING으로
   // 돌려받고, afterEach가 지울 수 있게 기록해 둔다.
   async function createOtherPlayer() {
-    const result = await pool.query(
+    const result = await pool.query<{ player_id: number }>(
       'INSERT INTO player DEFAULT VALUES RETURNING player_id',
     );
     const otherPlayerId = result.rows[0].player_id;
@@ -69,7 +79,7 @@ describe('attemptUpgrade', () => {
   }
 
   beforeEach(async () => {
-    const player = await pool.query('SELECT player_id FROM player');
+    const player = await pool.query<{ player_id: number }>('SELECT player_id FROM player');
     playerId = player.rows[0].player_id;
     createdGearIds = [];
     createdPlayerIds = [];
@@ -117,7 +127,7 @@ describe('attemptUpgrade', () => {
     });
 
     // 거부만 확인하면 "에러를 던졌지만 재료는 이미 나갔다"는 버그를 놓친다.
-    // 재료 소모는 upgrade.js의 만렙 검사보다 뒤에 있어야 하므로 그대로여야 한다.
+    // 재료 소모는 upgrade.ts의 만렙 검사보다 뒤에 있어야 하므로 그대로여야 한다.
     const stacksAfter = await readStacks();
     expect(stacksAfter).toEqual(stacksBefore);
   });
@@ -174,7 +184,7 @@ describe('attemptUpgrade', () => {
     const foreignGearId = await createGear(4, otherPlayerId);
     const stacksBefore = await readStacks();
 
-    // 남의 장비는 없는 장비와 같은 404로 합쳐진다(upgrade.js 34~38행).
+    // 남의 장비는 없는 장비와 같은 404로 합쳐진다(upgrade.ts의 gear_not_found 검사).
     await expect(attemptUpgrade(playerId, foreignGearId)).rejects.toMatchObject({
       status: 404,
       reason: 'gear_not_found',
