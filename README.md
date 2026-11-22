@@ -108,11 +108,17 @@ and returns `{ upgraded: false }`.
 
 ## 🎯 Planned
 
-- ⚔️ Finishing combat — clearing a run and reporting it to the server
-- 🧰 TypeScript on the server, Docker, and a public deployment on AWS
-- 🗡️ Three weapon specializations — Scythe, Crossbow, Watering Can
-- 🏰 Playable dungeon runs
+The finish line is fixed in the Definition of Done at the end of
+[`docs/design-backlog.md`](docs/design-backlog.md). What is left on it:
+
+- 🧰 TypeScript on the server (in progress), Docker, and a public deployment on AWS
+- 🏰 One complete dungeon run — tier 1, from entering to clearing, rewards and an upgrade
 - 🏆 Leaderboard
+- 🎨 Sprites for the hero and monsters, and a few sound effects
+- 🧪 A playtest of the public URL
+
+Deliberately not planned: dungeon tiers 2–10, the talent tree, the boss, and
+the Crossbow and Watering Can specializations — all designed, none built.
 
 ## 🎨 Credits
 

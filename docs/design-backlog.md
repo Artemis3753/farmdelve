@@ -183,8 +183,11 @@ Last updated: 2026-11-22
 - **The screen's long side had to be the direction of travel.** A vertical
   corridor makes the short side the way forward: nine tiles of warning no
   matter how wide the corridor gets. Turning it sideways doubles that for
-  free. This is not a side-scroller — the view stays top-down, only the
-  scrolling changed.
+  free. This is not a side-scroller — the grid stays top-down, only the
+  scrolling changed. (2026-11-19: the art will be drawn in a 3/4 view, like
+  Stardew — the rules keep the flat 2D grid, only the sprites are drawn at
+  an angle. A true side view was rejected because it would mean rewriting
+  the rules and their tests.)
 - **The two axes do different jobs.** Left and right is approach; up and
   down is dodging. Movement is four-directional, so the split stays
   readable.
@@ -833,7 +836,8 @@ what was written on 2026-08-25.
   and consumables.
 - **Abandoning a run: no record, no reward, straight back to the main
   screen.** ESC does it too.
-- **Key rebinding is in the DoD.** Sound and brightness options were cut —
+- **Key rebinding was in the DoD** — moved to §4 on 2026-11-22, see §5.
+  Sound and brightness options were cut —
   neither exists to configure. Fourteen bindings: 6 rotation, 1 mobility,
   2 consumables, 4 movement, ESC.
 
@@ -856,11 +860,40 @@ what was written on 2026-08-25.
   not block the infrastructure work.
 - Skill effects stay with pixelfx (see the bleed section above).
 
-### Deployment (2026-08-25)
+### Deployment (2026-08-25, replaced 2026-11-20)
 
-- **Render or Railway.** Both run a normal always-on Express server and
-  offer PostgreSQL alongside it, which suits this project better than a
-  serverless host. Final pick deferred until there is something to deploy.
+- ~~**Render or Railway.**~~ The 2026-08-25 pick, kept for the record: both
+  run a normal always-on Express server with PostgreSQL alongside, which
+  suits this project better than a serverless host.
+- **Replaced by AWS on 2026-11-20**, as the last step of the infrastructure
+  plan below. A managed host would have deployed sooner; AWS was chosen
+  because deploying there is itself part of what this portfolio shows.
+
+### Infrastructure (2026-11-20)
+
+The plan that replaced "keep adding game features" as the next priority.
+One branch and one pull request per step, merged only when CI is green.
+
+1. **CI (GitHub Actions)** — done 2026-11-20. One job builds, lints and
+   tests the client; the other starts a PostgreSQL service container, loads
+   `schema.sql` and `seed.sql`, and runs the server tests. A ruleset blocks
+   merging into `main` unless both pass.
+2. **TypeScript on the server** — in progress. `strict` from the start;
+   files convert one at a time with `allowJs` on, and it is switched off
+   once every file is `.ts`. `tsc` builds to `dist/`, and that is what runs
+   (Node can run `.ts` directly but does not type-check it, so CI runs the
+   build). Query results are typed with a generic per query
+   (`pool.query<{ slot: string }>`) — a promise about the row's shape, not a
+   runtime check; runtime validation was judged too much for this size.
+   **The client stays JavaScript.**
+3. **Docker** — a Dockerfile with a build stage, plus compose with
+   PostgreSQL.
+4. **AWS** — Express serves the built client from `client/dist`, so one
+   server answers both the pages and `/api`. A billing alarm goes up before
+   anything else; deploys use OIDC rather than stored keys; secrets stay out
+   of the repo; the database port is not public.
+
+Out of scope for this plan: an ORM, migrations, login, monitoring.
 
 ### Persistence (2026-08-25)
 
@@ -1181,8 +1214,9 @@ Non-blocking:
       Rage bar and the GCD are built (2026-11-17 and 2026-11-18); the bleed
       spread talent, the cooldowns, Sprint and the trash mechanics are not
 - [x] **Trash mechanics** — spin, pools, volley
-- [ ] Names for the thirteen talents (owner: Jihwan)
-- [ ] The two boss mechanics — parked until the trash is playable
+- [ ] Names for the thirteen talents (owner: Jihwan) — *outside the DoD
+      since 2026-11-22*
+- [ ] The two boss mechanics — *outside the DoD since 2026-11-22*
 - [x] **Monster base numbers and roster** — trash only, provisional,
       2026-09-30. The boss waits on its mechanics
 - [ ] Crossbow skill list *(outside the DoD — paper only)*
@@ -1262,6 +1296,13 @@ Table list is settled — see `data-model.md`. What is left:
   shape has to be settled early.
 - **Legendary items** — per-item unique effects, too large a scope.
 - **Multiplayer / tank-healer-dps roles** — possible future expansion.
+- **Cut from the Definition of Done on 2026-11-22** (see §5 for why):
+  - **Dungeon tiers 2 through 10.** The tier rules in §1 stay as designed;
+    only tier 1 gets built.
+  - **The Scythe talent tree.** Its thirteen talents stay designed in §1.
+  - **The boss and its two mechanics.** A tier-1 run is cleared on trash.
+  - **Key rebinding.** It was added for fourteen bindings; four skills and
+    movement do not need it yet.
 - **A commercial (Steam) release** (2026-11-22). The project is built to
   show backend work: an Express server, PostgreSQL, and server-decided
   upgrade rolls. A paid single-player game would want none of that — it
@@ -1299,32 +1340,61 @@ Table list is settled — see `data-model.md`. What is left:
 
 ## 5. Definition of Done
 
-Agreed 2026-08-25. The point is to fix the stopping line before building,
-so scope stops growing. When this list is full, the project is done.
-Anything after it is a separate update, not "still finishing up."
+Agreed 2026-08-25, **re-scoped 2026-11-22.** The point is to fix the
+stopping line before building, so scope stops growing. When this list is
+full, the project is done. Anything after it is a separate update, not
+"still finishing up."
 
-- [ ] Farm home screen: plots, crops, currency
-- [ ] Skill resource system
-- [ ] **Scythe specialization only** — skills and talent tree. Crossbow and
-      Watering Can are designed on paper but not built. One working spec is
-      enough to prove the skill; building three triples the schedule.
-- [ ] Dungeon tiers 1 through 10
-- [ ] Monster data
-- [ ] **Gear upgrading** — the headline feature
-- [ ] **Leaderboard**
-- [ ] **Persistence** — close the browser, reopen, everything survives
-- [ ] **A complete dungeon loop** — enter -> fight -> clear -> rewards
-      (gold and crests). Death shows "try again" with no penalty.
-- [ ] **Deployed and reachable at a URL.** Project 1 was never deployed;
-      this one ships. Target platform still open (see below).
+**Why it was re-scoped:** the 2026-08-25 list was drawn before anything
+was built and assumed open-ended time. Two fixed dates now bound it — the
+infrastructure deadline (2026-12-10) and a move to Canada in January 2027 —
+and the priority since 2026-11-20 is infrastructure over new game features.
+The cut keeps one complete loop rather than a wide, unfinished game: a
+single tier played end to end shows every system working together, while
+nine more tiers would mostly be numbers. Everything cut is listed in §4.
 
+**Game**
+
+- [x] Farm home screen: plots, crops, currency
+- [x] **The Greenhouse as its own screen** — added 2026-08-26. Planting and
+      harvesting moved off the main screen once the layout was drawn.
+- [x] **Gear upgrading** — the headline feature
 - [x] **Inventory and equipping gear** — added 2026-08-25. Upgrading means
       nothing without somewhere to equip the result.
+- [x] **Persistence** — the farm, stacks and gear live in PostgreSQL, so
+      closing the browser loses nothing
+- [x] Skill resource system — Rage
+- [x] **Scythe specialization only** — four skills, Rage and the GCD are
+      built (2026-11-17/18). Crossbow and Watering Can stay on paper. One
+      working spec is enough to prove the skill; building three triples the
+      schedule. The talent tree was cut on 2026-11-22.
+- [x] Monster data — the trash roster (2026-09-30). The boss was cut with
+      its mechanics.
+- [ ] **A complete dungeon loop, tier 1 only** — enter -> fight -> clear ->
+      rewards (gold and crests) -> spend them on an upgrade. Death shows
+      "try again" with no penalty. Narrowed from tiers 1 through 10 on
+      2026-11-22. Today a run can end in defeat but not in a clear, and the
+      client does not call the two dungeon endpoints yet.
+- [ ] **Leaderboard** — highest tier cleared. Small, and it is a ranking
+      query on the server rather than more screen work.
 
-- [ ] **Key rebinding** — added 2026-08-26. Fourteen bindings is past the
-      point where one fixed layout suits everybody.
-- [ ] **The Greenhouse as its own screen** — added 2026-08-26. Planting and
-      harvesting moved off the main screen once the layout was drawn.
+**Infrastructure** (added 2026-11-22; see §1 *Infrastructure*)
+
+- [x] **CI** — GitHub Actions, merging blocked unless green
+- [ ] **TypeScript on the server**
+- [ ] **Docker**
+- [ ] **Deployed and reachable at a URL, on AWS.** Project 1 was never
+      deployed; this one ships.
+
+**Finish** (art and playtesting added 2026-11-22)
+
+- [ ] **Minimum art and sound** — a hero and the monsters through the
+      pipeline in §1 *Art and sound assets*, plus a few sound effects. Today
+      the screens are icons only, and that is the first thing an
+      interviewer sees. After 2026-12-10.
+- [ ] **Playtested** — the public URL played by three to five people
+      (friends, family), and what they reported written down along with
+      what changed because of it.
 
 - [ ] **Every string the player sees is in English** — fixed 2026-08-31.
       This is a portfolio piece for a job search in Canada, so the screens
