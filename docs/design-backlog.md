@@ -888,10 +888,16 @@ One branch and one pull request per step, merged only when CI is green.
    (`pool.query<{ slot: string }>`) — a promise about the row's shape, not a
    runtime check; runtime validation was judged too much for this size.
    **The client stays JavaScript.**
-3. **Docker** — a Dockerfile with a build stage, plus compose with
-   PostgreSQL.
-4. **AWS** — Express serves the built client from `client/dist`, so one
-   server answers both the pages and `/api`. A billing alarm goes up before
+3. **Docker** — done 2026-11-22. A three-stage `Dockerfile` (client build,
+   server build, run on `node:26-slim` as the `node` user with production
+   dependencies only) and `compose.yaml` with PostgreSQL 17. The schema and
+   seed load through the image's `/docker-entrypoint-initdb.d` on the first
+   start; the health check asks over TCP because the image's init server
+   listens on the Unix socket only and would report ready too early. The
+   database port is not published. Express now serves the built client from
+   `client/dist` — moved up from the AWS step so that the image is the whole
+   app. No catch-all route: the client has no URL routing.
+4. **AWS** — A billing alarm goes up before
    anything else; deploys use OIDC rather than stored keys; secrets stay out
    of the repo; the database port is not public.
 
@@ -1384,7 +1390,7 @@ nine more tiers would mostly be numbers. Everything cut is listed in §4.
 
 - [x] **CI** — GitHub Actions, merging blocked unless green
 - [x] **TypeScript on the server**
-- [ ] **Docker**
+- [x] **Docker**
 - [ ] **Deployed and reachable at a URL, on AWS.** Project 1 was never
       deployed; this one ships.
 
