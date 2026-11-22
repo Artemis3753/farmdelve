@@ -67,9 +67,6 @@ export async function craftItem(playerId: number, recipeId: number) {
     // 깎기가 먼저, 넣기가 나중이다. 결과는 어느 쪽이 먼저든 같지만, 강화에서
     // 세운 "차감이 먼저"라는 규칙과 읽히는 순서를 맞춘다.
     // 모자라면 spendStack이 409를 던지고 아래 catch가 전부 롤백한다.
-    //
-    // stack.js가 아직 JS라 두 반환값은 지금 any다. stack을 변환하면 이 파일을
-    // 고치지 않아도 number로 바뀐다.
     const ingredientLeft = await spendStack(client, playerId, ingredientId, ingredientNeed);
     const craftedTotal = await gainStack(client, playerId, craftedId, craftedAmount);
 
