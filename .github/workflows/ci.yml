@@ -59,3 +59,10 @@ jobs:
         - run: psql -v ON_ERROR_STOP=1 -f db/schema.sql
         - run: psql -v ON_ERROR_STOP=1 -f db/seed.sql 
         - run: npm test
+  fd-docker:
+        runs-on: ubuntu-24.04
+        steps:
+            - uses: actions/checkout@v7
+            - run: docker build -t farmdelve .
+            - run: docker run -d -p 3001:3001 -e TIME_SCALE=1 farmdelve
+            - run: curl --retry 10 --retry-connrefused --retry-delay 1 -f localhost:3001/
