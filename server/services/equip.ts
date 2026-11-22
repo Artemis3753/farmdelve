@@ -12,10 +12,22 @@
 import pool from '../db/pool.js';
 import { serviceError } from './errors.js';
 
-export async function equipGear(playerId, gearInstanceId) {
+// 반환 타입은 적지 않고 TS의 추론에 맡긴다(2026-11-22 결정). 아래 return 문이
+// 곧 약속이라 같은 내용을 함수 머리에 한 번 더 적을 이유가 없다.
+export async function equipGear(playerId: number, gearInstanceId: number) {
   // 이 장비가 존재하는지, 이 플레이어의 것인지, 그리고 어느 칸에 들어가는지를
   // 한 번에 확인한다. slot이 gear_template에만 있어서 JOIN으로 붙여 온다.
-  const found = await pool.query(
+  //
+  // <{ slot: string }>는 "이 쿼리는 slot 열 하나짜리 행을 돌려준다"는 약속이다.
+  // pg는 DB가 무엇을 줄지 알 수 없어서 기본값으로 any를 주는데, any면 TS가 그
+  // 값에 대한 검사를 전부 포기한다. 약속을 적어 두면 받은 뒤의 오타·잘못된
+  // 사용은 tsc가 잡는다. 실행 중에 확인되는 건 아니라서 SELECT 열과 이 모양은
+  // 사람이 맞춰야 한다 — 실행 중 검증(zod 등)은 이 크기엔 과해서 뺐다(2026-11-22).
+  //
+  // slot을 'head' | 'chest' 같은 목록 타입이 아니라 string으로 둔 이유: 이
+  // 함수는 받은 값을 그대로 UPDATE에 넘기고 돌려줄 뿐 종류별로 갈라 쓰지 않는다.
+  // 허용 값 검사는 schema.sql의 CHECK 제약이 이미 하고 있다.
+  const found = await pool.query<{ slot: string }>(
     `SELECT t.slot
        FROM gear_instance i
        JOIN gear_template t ON i.gear_template_id = t.gear_template_id
