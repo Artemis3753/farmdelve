@@ -2,26 +2,24 @@
 
 [![CI](https://github.com/Artemis3753/farmdelve/actions/workflows/ci.yml/badge.svg)](https://github.com/Artemis3753/farmdelve/actions/workflows/ci.yml)
 
-A single-player farming game with tiered dungeons and gear upgrading.
+A single-player browser game where the farm feeds the dungeon: grow crops,
+refine them into upgrade materials, push your gear to `+1`, `+2`, … and take
+it into a timed dungeon run.
 
 ## 🚧 Status
 
-In development. Three slices work end to end — **gear upgrading**, **inventory
-and equipping**, and **farming**. You can plant a crop, wait for it to grow,
-harvest it for produce and gold, refine the produce into an upgrade material,
-and spend that material on a `+1` roll that can fail.
+In development. Working end to end, from the screen to the database:
 
-The dungeon screen runs combat in the browser. Arrow keys or WASD move one
-tile at a time, monster packs aggro and chase, both sides auto-attack, and four
-skills share a global cooldown: two build Rage, two spend it, and one of the
-spenders leaves a bleed. A run can end in defeat but not yet in a clear, and
-the screen does not call the two dungeon endpoints yet.
+- **Farming** — plant a crop, wait for it to grow, harvest produce and gold
+- **Crafting** — refine produce into an upgrade material
+- **Gear upgrading** — spend materials on a `+1` roll that can fail
+- **Inventory and equipping**
 
-## 🤖 Working with Claude Code
-
-[`CLAUDE.md`](CLAUDE.md) is the instruction file for Claude Code in this repo. The rule in it is to look up how WoW and Fellowship solved the same problem before offering options, and to put the comparison into the options: "Put the comparison into the options, then ask."
-The "Stats" section of [`docs/design-backlog.md`](docs/design-backlog.md) compares the armor formula `armor / (armor + 1000)` with the banded diminishing returns used by WoW and Fellowship.
-The repo has no hooks and no custom commands.
+The dungeon screen runs combat in the browser only. Arrow keys or WASD move
+one tile at a time, monster packs aggro and chase, both sides auto-attack, and
+four skills share a global cooldown: two build Rage, two spend it, and one of
+the spenders leaves a bleed. A run can end in defeat but not yet in a clear,
+and the screen does not call the two dungeon endpoints yet.
 
 ## 🏃 Running it locally
 
@@ -42,7 +40,8 @@ refuses to start rather than quietly connecting to the wrong database.
 cd server
 npm install
 npm run db:reset   # drops, recreates and seeds every table
-npm start
+npm run build      # compiles TypeScript into dist/
+npm start          # runs dist/index.js
 
 cd client
 npm install
@@ -64,13 +63,22 @@ PostgreSQL          15 tables
 ```
 
 - `server/services/` — one file per feature. None of them know about `req` or
-  `res`; they throw errors carrying a status code, and `index.js` translates.
+  `res`; they throw a `ServiceError` carrying a status code, and `index.js`
+  turns it into the response.
 - `server/db/` — `schema.sql` and `seed.sql`. No migration tool.
 - `client/src/screens/` — one file per screen, switched by `useState` rather
   than a router.
 - `client/src/combat/rules.js` — combat as a reducer with no randomness and no
   clock of its own. `Dungeon.jsx` dispatches a tick ten times a second, plus
   the key presses.
+
+The server is being converted to TypeScript one file at a time. `tsc` builds
+it into `dist/`, and `allowJs` lets the converted and unconverted files run
+side by side until the last one is done. The client stays JavaScript.
+
+GitHub Actions runs on every pull request: the client is built, linted and
+tested, and the server is built and tested against a PostgreSQL 17 service
+container. `main` only accepts a pull request once both jobs pass.
 
 ## 🔌 API
 
@@ -87,24 +95,21 @@ PostgreSQL          15 tables
 | `POST` | `/api/dungeon/enter` | body `{ tier }`. Closes any leftover run as failed, then starts a new one |
 | `POST` | `/api/dungeon/:runId/complete` | body `{ cleared }`. An overtime clear counts but does not raise the best tier |
 
-Every write runs in one transaction and either commits whole or rolls back
-whole. A **409** means the request itself was fine but the state disagreed —
-the plot is empty, the crop is not ready, the materials are short. A failed
-upgrade roll is **not** a 409: the materials really were spent, so it commits
-and returns `{ upgraded: false }`.
+Every write that touches more than one row runs in one transaction and either
+commits whole or rolls back whole. A **409** means the request itself was fine
+but the state disagreed — the plot is empty, the crop is not ready, the
+materials are short. A failed upgrade roll is **not** a 409: the materials
+really were spent, so it commits and returns `{ upgraded: false }`.
 
 ## ⚠️ Known limitations
 
 - **No accounts.** Every request runs as player 1.
-- **Not deployed.** Runs locally only, for now.
+- **Not deployed yet.** Runs locally only until the AWS deployment is done.
 - **No migrations.** `schema.sql` drops and recreates everything, so
   `npm run db:reset` wipes the save.
 - **Dungeon clears are self-reported.** The client says whether a run was
   cleared; the server only keeps the clock. Accepted for a portfolio game —
   a leaderboard built on these runs could be cheated.
-- **Combat stays in the browser.** Nothing about a fight reaches the server
-  yet, and there is no way to clear a run.
-- The leaderboard is designed but not built.
 
 ## 🎯 Planned
 
@@ -119,6 +124,17 @@ The finish line is fixed in the Definition of Done at the end of
 
 Deliberately not planned: dungeon tiers 2–10, the talent tree, the boss, and
 the Crossbow and Watering Can specializations — all designed, none built.
+
+## 🤖 Working with Claude Code
+
+[`CLAUDE.md`](CLAUDE.md) holds one rule for Claude Code in this repo: before
+offering options on a combat or stat decision, look up how WoW and Fellowship
+solved the same problem, and put that comparison into the options. The "Stats"
+section of [`docs/design-backlog.md`](docs/design-backlog.md) is an example —
+it compares the armor formula `armor / (armor + 1000)` with the banded
+diminishing returns those two games use.
+
+The repo has no hooks and no custom commands.
 
 ## 🎨 Credits
 
