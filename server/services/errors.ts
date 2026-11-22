@@ -29,7 +29,7 @@ export class ServiceError extends Error {
   }
 }
 
-// 호출하는 쪽 17곳이 `throw serviceError(404, 'player_not_found')` 모양을 쓰고
+// 호출하는 쪽 18곳이(player 변환 때 하나 늘었다) `throw serviceError(404, 'player_not_found')` 모양을 쓰고
 // 있어서, 함수는 남겨 두고 안에서 클래스를 만들게 했다. 호출부는 손대지 않는다.
 export function serviceError(status: number, reason: string, details?: unknown): ServiceError {
   return new ServiceError(status, reason, details);

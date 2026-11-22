@@ -15,7 +15,10 @@ import pool from '../db/pool.js';
 import { serviceError } from './errors.js';
 
 // 던전에 들어간다. 진행 중이던 런이 남아 있으면 그것을 실패로 닫고 시작한다.
-export async function enterDungeon(playerId, tier) {
+//
+// 반환 타입은 equip과 같은 이유로 적지 않는다(2026-11-22 결정). 아래 제네릭의
+// 숫자 열은 schema.sql에서 전부 INTEGER라 number다.
+export async function enterDungeon(playerId: number, tier: number) {
   const client = await pool.connect();
 
   try {
@@ -23,7 +26,7 @@ export async function enterDungeon(playerId, tier) {
 
     // player를 맨 먼저 잠근다. 8/31에 정한 순서(player → 밭 칸/장비 → 스택)를
     // 그대로 따르는 것이고, dungeon_run은 그 줄의 맨 뒤에 붙는다.
-    const player = await client.query(
+    const player = await client.query<{ highest_tier_cleared: number }>(
       `SELECT highest_tier_cleared FROM player
         WHERE player_id = $1
         FOR UPDATE`,
@@ -69,7 +72,10 @@ export async function enterDungeon(playerId, tier) {
     //
     // status를 고른 것이 아니라 강제된 것이다. end_time을 적지 않아 NULL이 되고,
     // schema.sql의 짝 NULL CHECK가 그때 status를 ongoing으로 못 박는다.
-    const run = await client.query(
+    //
+    // start_time이 Date인 이유는 player.ts의 plantedAt과 같다 — TIMESTAMPTZ를
+    // pg가 Date로 주고, 클라이언트에는 res.json()이 ISO 문자열로 바꿔 보낸다.
+    const run = await client.query<{ dungeon_run_id: number; start_time: Date }>(
       `INSERT INTO dungeon_run (player_id, dungeon_template_id, tier, status)
        VALUES ($1, (SELECT dungeon_template_id FROM dungeon_template LIMIT 1), $2, 'ongoing')
        RETURNING dungeon_run_id, start_time`,
@@ -86,7 +92,7 @@ export async function enterDungeon(playerId, tier) {
     //
     // TIME_SCALE은 걸지 않는다. 농작물은 기다리는 시간이라 배속이 말이 되지만,
     // 던전은 실시간 전투라 5분이 30초가 되면 게임이 성립하지 않는다.
-    const limit = await client.query(
+    const limit = await client.query<{ timeLimitSeconds: number }>(
       `SELECT EXTRACT(EPOCH FROM time_limit)::float8 AS "timeLimitSeconds"
          FROM dungeon_tier_template
         WHERE tier = $1`,
@@ -112,7 +118,10 @@ export async function enterDungeon(playerId, tier) {
 // 런을 끝낸다. cleared는 클라이언트가 주장하는 값이다 — 서버는 전투를 보지
 // 않으므로 확인할 방법이 없고, 백로그가 부정행위 방지를 범위 밖으로 이미
 // 정해뒀다(2026-08-24).
-export async function completeDungeon(playerId, runId, cleared) {
+//
+// cleared가 boolean인 이유: 라우트가 true/false가 아니면 400으로 이미 돌려보낸다.
+// 그 검사가 실행 중의 확인이고, 이 타입은 그 결과를 함수 머리에 적어 둔 것이다.
+export async function completeDungeon(playerId: number, runId: number, cleared: boolean) {
   const client = await pool.connect();
 
   try {
@@ -127,7 +136,11 @@ export async function completeDungeon(playerId, runId, cleared) {
     // 비교식이 그대로 boolean 컬럼이 된다. CASE로 감싸 1/0을 만들면 응답에
     // 숫자가 실려 나가고, 읽는 쪽이 0을 "아님"과 "없음" 중 무엇으로 볼지
     // 한 번 더 생각해야 한다.
-    const run = await client.query(
+    //
+    // overtime이 boolean인 이유: 비교식의 결과는 PostgreSQL의 boolean이고, pg는
+    // 그걸 JS true/false로 준다. status를 'ongoing' | 'cleared' | 'failed' 목록이
+    // 아니라 string으로 둔 건 equip의 slot과 같은 이유다 — CHECK가 지킨다.
+    const run = await client.query<{ status: string; tier: number; overtime: boolean }>(
       `SELECT r.status, r.tier, now() > r.start_time + t.time_limit overtime
          FROM dungeon_run r
          JOIN dungeon_tier_template t ON t.tier = r.tier
@@ -169,10 +182,14 @@ export async function completeDungeon(playerId, runId, cleared) {
     // cleared로 남지만 기록은 안 올린다 — 시간 안에 한 번도 못 깨고 계속 위로
     // 올라갈 수 있으면 제한 시간이 보상만 깎을 뿐 방벽이 되지 못한다.
     // WoW의 키스톤이 시간을 놓치면 한 단계 내려가는 것과 같은 갈림이다.
-    let highestTierCleared = null;
+    //
+    // number | null을 적는 이유: null로 시작해서 아래 if 안에서만 숫자가 된다.
+    // 적지 않아도 TS가 흐름을 따라가 추론하긴 하지만, "기록이 안 올랐으면 null"이
+    // 이 변수의 약속이라 첫 줄에서 바로 읽히게 한다.
+    let highestTierCleared: number | null = null;
 
     if (cleared && !overtime) {
-      const updated = await client.query(
+      const updated = await client.query<{ highest_tier_cleared: number }>(
         `UPDATE player
             SET highest_tier_cleared = GREATEST(highest_tier_cleared, $1)
           WHERE player_id = $2

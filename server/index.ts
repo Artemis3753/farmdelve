@@ -7,6 +7,7 @@ import { equipGear } from './services/equip.js';
 import { plantSeed, harvestCrop } from './services/farm.js';
 import { craftItem } from './services/craft.js';
 import { enterDungeon, completeDungeon } from './services/dungeon.js';
+import { ServiceError } from './services/errors.js';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -25,7 +26,9 @@ const PLAYER_ID = 1;
 // 둘 다 살아 있고 그 사이 연결도 뚫렸다는 뜻이 된다.
 app.get('/api/health', async (req, res) => {
   try {
-    const result = await pool.query('SELECT NOW()');
+    // NOW()는 TIMESTAMPTZ라 pg가 Date로 준다. 열 이름은 PostgreSQL이 함수 이름을
+    // 소문자로 붙인 now다.
+    const result = await pool.query<{ now: Date }>('SELECT NOW()');
     res.json({ status: 'ok', now: result.rows[0].now });
   } catch (err) {
     // 원인은 서버 로그에만 남기고 응답에는 싣지 않는다. DB 에러 메시지에는 접속 정보나
@@ -64,19 +67,26 @@ app.post('/api/gear/:gearInstanceId/upgrade', async (req, res) => {
     // 않았다"는 다른 층위이고, 전자는 upgraded: false로 실려 나간다.
     res.status(200).json(result);
   } catch (err) {
-    // status가 붙어 있으면 서비스가 의도해서 던진 것이다(404/409). 안 붙어
-    // 있으면 pg가 던졌거나 코드 버그이므로 500으로 흘려보낸다.
-    const status = err.status ?? 500;
-
-    if (status === 500) {
+    // ServiceError면 서비스가 의도해서 던진 것이다(404/409). 아니면 pg가
+    // 던졌거나 코드 버그이므로 500으로 흘려보낸다.
+    //
+    // 예전에는 err.status가 있는지로 갈랐다. strict TS에서 err는 unknown이라
+    // err.status를 읽는 줄 자체가 빌드 에러이고, instanceof가 실행 중에 정체를
+    // 확인해 주는 방법이다 — 이 검사를 통과한 블록 안에서는 TS도 err를
+    // ServiceError로 보고 status·reason·details를 읽게 해 준다. 아래 일곱
+    // 라우트도 같은 모양이다(errors.ts 맨 위 주석, 2026-11-21 결정).
+    //
+    // 같은 catch가 라우트마다 반복되지만, Express의 에러 미들웨어로 묶는 건
+    // 여기서도 미룬다 — 이번 변환은 타입만 바꾸고 구조는 건드리지 않는다.
+    if (err instanceof ServiceError) {
+      // 의도해서 던진 에러는 reason과 details를 그대로 내보낸다. "3개 필요한데
+      // 1개 있음"까지 담겨 있어서 클라이언트가 추가 조회 없이 안내할 수 있다.
+      res.status(err.status).json({ reason: err.reason, details: err.details });
+    } else {
       // health와 같은 규칙 — 원인은 로그에만 남긴다. DB 에러 메시지에는 테이블
       // 구조나 접속 정보가 섞여 나올 수 있다.
       console.error('upgrade failed:', err);
       res.status(500).json({ reason: 'internal_error' });
-    } else {
-      // 의도해서 던진 에러는 reason과 details를 그대로 내보낸다. "3개 필요한데
-      // 1개 있음"까지 담겨 있어서 클라이언트가 추가 조회 없이 안내할 수 있다.
-      res.status(status).json({ reason: err.reason, details: err.details });
     }
   }
 });
@@ -96,13 +106,11 @@ app.put('/api/gear/:gearInstanceId/equip', async (req, res) => {
   try {
     res.json(await equipGear(PLAYER_ID, gearInstanceId));
   } catch (err) {
-    const status = err.status ?? 500;
-
-    if (status === 500) {
+    if (err instanceof ServiceError) {
+      res.status(err.status).json({ reason: err.reason });
+    } else {
       console.error('equip failed:', err);
       res.status(500).json({ reason: 'internal_error' });
-    } else {
-      res.status(status).json({ reason: err.reason });
     }
   }
 });
@@ -137,14 +145,12 @@ app.post('/api/plots/:plotNumber/plant', async (req, res) => {
   try {
     res.status(200).json(await plantSeed(PLAYER_ID, plotNumber, cropTemplateId));
   } catch (err) {
-    const status = err.status ?? 500;
-
-    if (status === 500) {
+    if (err instanceof ServiceError) {
+      // 씨앗이 모자랐을 때 spendStack이 실은 details가 여기로 나온다.
+      res.status(err.status).json({ reason: err.reason, details: err.details });
+    } else {
       console.error('plant failed:', err);
       res.status(500).json({ reason: 'internal_error' });
-    } else {
-      // 씨앗이 모자랐을 때 spendStack이 실은 details가 여기로 나온다.
-      res.status(status).json({ reason: err.reason, details: err.details });
     }
   }
 });
@@ -161,13 +167,11 @@ app.post('/api/plots/:plotNumber/harvest', async (req, res) => {
   try {
     res.status(200).json(await harvestCrop(PLAYER_ID, plotNumber));
   } catch (err) {
-    const status = err.status ?? 500;
-
-    if (status === 500) {
+    if (err instanceof ServiceError) {
+      res.status(err.status).json({ reason: err.reason, details: err.details });
+    } else {
       console.error('harvest failed:', err);
       res.status(500).json({ reason: 'internal_error' });
-    } else {
-      res.status(status).json({ reason: err.reason, details: err.details });
     }
   }
 });
@@ -184,13 +188,11 @@ app.post('/api/craft/:recipeId', async (req, res) => {
   try {
     res.status(200).json(await craftItem(PLAYER_ID, recipeId));
   } catch (err) {
-    const status = err.status ?? 500;
-
-    if (status === 500) {
+    if (err instanceof ServiceError) {
+      res.status(err.status).json({ reason: err.reason, details: err.details });
+    } else {
       console.error('craft failed:', err);
       res.status(500).json({ reason: 'internal_error' });
-    } else {
-      res.status(status).json({ reason: err.reason, details: err.details });
     }
   }
 });
@@ -212,13 +214,11 @@ app.post('/api/dungeon/enter', async (req, res) => {
   try {
     res.status(200).json(await enterDungeon(PLAYER_ID, tier));
   } catch (err) {
-    const status = err.status ?? 500;
-
-    if (status === 500) {
+    if (err instanceof ServiceError) {
+      res.status(err.status).json({ reason: err.reason, details: err.details });
+    } else {
       console.error('dungeon enter failed:', err);
       res.status(500).json({ reason: 'internal_error' });
-    } else {
-      res.status(status).json({ reason: err.reason, details: err.details });
     }
   }
 });
@@ -236,7 +236,12 @@ app.post('/api/dungeon/:runId/complete', async (req, res) => {
   // 다른 라우트들은 Number.isInteger로 걸렀지만 이 값은 숫자가 아니다.
   // 참/거짓 둘만 받는다고 못 박지 않으면 문자열 'false'가 그대로 참으로 읽혀서,
   // 실패한 런이 클리어로 기록된다.
-  const cleared = req.body?.cleared;
+  //
+  // unknown으로 받는 이유: req.body는 Express 타입에서 any라, 그대로 두면 아래
+  // 검사를 지워도 completeDungeon(boolean을 받는다)에 무엇이든 넘어간다.
+  // unknown은 "정체를 확인하기 전엔 못 쓴다"는 뜻이라, 아래 if를 통과한 뒤에야
+  // TS가 이 값을 true | false로 보고 넘기게 해 준다. 검사가 타입의 근거가 된다.
+  const cleared: unknown = req.body?.cleared;
 
   if (cleared !== true && cleared !== false) {
     return res.status(400).json({ reason: 'invalid_body' });
@@ -245,13 +250,11 @@ app.post('/api/dungeon/:runId/complete', async (req, res) => {
   try {
     res.status(200).json(await completeDungeon(PLAYER_ID, runId, cleared));
   } catch (err) {
-    const status = err.status ?? 500;
-
-    if (status === 500) {
+    if (err instanceof ServiceError) {
+      res.status(err.status).json({ reason: err.reason, details: err.details });
+    } else {
       console.error('dungeon complete failed:', err);
       res.status(500).json({ reason: 'internal_error' });
-    } else {
-      res.status(status).json({ reason: err.reason, details: err.details });
     }
   }
 });
@@ -275,13 +278,11 @@ app.get('/api/player', async (req, res) => {
     // getPlayer가 붙여 보내는 404 말고는 전부 500이다. 세 라우트가 같은 모양을
     // 반복하는데, Express의 에러 미들웨어로 묶는 건 라우트가 더 늘어난 뒤에
     // 해도 늦지 않다.
-    const status = err.status ?? 500;
-
-    if (status === 500) {
+    if (err instanceof ServiceError) {
+      res.status(err.status).json({ reason: err.reason });
+    } else {
       console.error('player fetch failed:', err);
       res.status(500).json({ reason: 'internal_error' });
-    } else {
-      res.status(status).json({ reason: err.reason });
     }
   }
 });

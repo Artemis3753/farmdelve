@@ -878,9 +878,11 @@ One branch and one pull request per step, merged only when CI is green.
    tests the client; the other starts a PostgreSQL service container, loads
    `schema.sql` and `seed.sql`, and runs the server tests. A ruleset blocks
    merging into `main` unless both pass.
-2. **TypeScript on the server** — in progress. `strict` from the start;
-   files convert one at a time with `allowJs` on, and it is switched off
-   once every file is `.ts`. `tsc` builds to `dist/`, and that is what runs
+2. **TypeScript on the server** — done 2026-11-22. `strict` from the start;
+   files converted one at a time with `allowJs` on, and it was switched off
+   once every file was `.ts`. `tsconfig.json` type-checks everything including
+   the tests (vitest strips types without checking them), and
+   `tsconfig.build.json` extends it without the tests to emit. CI runs both. `tsc` builds to `dist/`, and that is what runs
    (Node can run `.ts` directly but does not type-check it, so CI runs the
    build). Query results are typed with a generic per query
    (`pool.query<{ slot: string }>`) — a promise about the row's shape, not a
@@ -1381,7 +1383,7 @@ nine more tiers would mostly be numbers. Everything cut is listed in §4.
 **Infrastructure** (added 2026-11-22; see §1 *Infrastructure*)
 
 - [x] **CI** — GitHub Actions, merging blocked unless green
-- [ ] **TypeScript on the server**
+- [x] **TypeScript on the server**
 - [ ] **Docker**
 - [ ] **Deployed and reachable at a URL, on AWS.** Project 1 was never
       deployed; this one ships.

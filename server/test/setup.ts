@@ -10,7 +10,7 @@ beforeAll(async () => {
   // 주소 문자열을 파싱하지 않고 서버에게 직접 묻는다. 주소에 DB 이름이 빠져 있으면
   // pg가 OS 사용자 이름의 DB로 접속하는데, 그 경우 문자열 검사는 속지만 서버가
   // 말해 주는 이름은 거짓말을 못 한다.
-  const result = await pool.query('SELECT current_database() AS name');
+  const result = await pool.query<{ name: string }>('SELECT current_database() AS name');
   const name = result.rows[0].name;
 
   if (!name.endsWith('_test')) {

@@ -63,7 +63,7 @@ PostgreSQL          15 tables
 ```
 
 - `server/services/` — one file per feature. None of them know about `req` or
-  `res`; they throw a `ServiceError` carrying a status code, and `index.js`
+  `res`; they throw a `ServiceError` carrying a status code, and `index.ts`
   turns it into the response.
 - `server/db/` — `schema.sql` and `seed.sql`. No migration tool.
 - `client/src/screens/` — one file per screen, switched by `useState` rather
@@ -72,13 +72,15 @@ PostgreSQL          15 tables
   clock of its own. `Dungeon.jsx` dispatches a tick ten times a second, plus
   the key presses.
 
-The server is being converted to TypeScript one file at a time. `tsc` builds
-it into `dist/`, and `allowJs` lets the converted and unconverted files run
-side by side until the last one is done. The client stays JavaScript.
+The server is TypeScript under `strict`. `tsconfig.json` type-checks
+everything, tests included, without emitting; `tsconfig.build.json` extends it,
+leaves the tests out and builds into `dist/`. Each query declares the shape of
+its rows (`pool.query<{ slot: string }>`) — a compile-time promise, not a
+runtime check. The client stays JavaScript.
 
 GitHub Actions runs on every pull request: the client is built, linted and
-tested, and the server is built and tested against a PostgreSQL 17 service
-container. `main` only accepts a pull request once both jobs pass.
+tested, and the server is built, type-checked and tested against a PostgreSQL 17
+service container. `main` only accepts a pull request once both jobs pass.
 
 ## 🔌 API
 
@@ -116,7 +118,7 @@ really were spent, so it commits and returns `{ upgraded: false }`.
 The finish line is fixed in the Definition of Done at the end of
 [`docs/design-backlog.md`](docs/design-backlog.md). What is left on it:
 
-- 🧰 TypeScript on the server (in progress), Docker, and a public deployment on AWS
+- 🧰 Docker, and a public deployment on AWS
 - 🏰 One complete dungeon run — tier 1, from entering to clearing, rewards and an upgrade
 - 🏆 Leaderboard
 - 🎨 Sprites for the hero and monsters, and a few sound effects

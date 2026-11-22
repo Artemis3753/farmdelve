@@ -10,24 +10,44 @@
 import pool from '../db/pool.js';
 import { TIME_SCALE } from '../config.js';
 
+// 반환 타입은 equip과 같은 이유로 적지 않는다(2026-11-22 결정).
+//
+// 이 함수는 행을 꺼내 쓰지 않고 그대로 넘기기만 해서, 제네릭이 없어도 이 파일
+// 안에서는 잡을 실수가 없다. 그래도 붙이는 이유: 제네릭이 없으면 반환값이 통째로
+// any라 이 값을 받는 쪽(index.js, 나중의 테스트)도 검사를 못 받는다. 다른
+// 서비스들과 "모든 쿼리에 모양을 적는다"는 규칙을 하나로 맞추는 것도 있다.
+//
+// 타입의 근거는 schema.sql이다. 숫자 열은 전부 INTEGER, 글자 열은 TEXT라
+// number와 string뿐이고, INTERVAL 두 개는 아래에서 ::float8로 바꿔 받아 number다.
+// NULL을 허용하는 열이 하나도 없어서 | null도 없다.
 export async function getTemplates() {
   // 일곱 쿼리는 서로의 결과를 쓰지 않으므로 기다릴 이유가 없다. Promise.all이
   // 전부 한꺼번에 띄우고 마지막 하나가 끝날 때 배열로 돌려준다.
   //
-  // 읽기뿐이라 pool.connect()가 아니라 pool.query()를 쓴다. 세 쿼리가 서로 다른
+  // 읽기뿐이라 pool.connect()가 아니라 pool.query()를 쓴다. 쿼리들이 서로 다른
   // 연결로 나가도 상관없다 — 트랜잭션이 아니기 때문이다. 강화 쪽이 연결을 직접
   // 빌렸던 건 BEGIN과 COMMIT이 같은 연결에 있어야 해서였다.
   const [stacks, gear, upgrades, crops, recipes, monsters, packs] = await Promise.all([
     // 별칭에 큰따옴표가 없으면 PostgreSQL이 식별자를 소문자로 눕혀서
     // maxStack이 아니라 maxstack으로 나온다.
-    pool.query(
+    pool.query<{ stackTemplateId: number; name: string; maxStack: number }>(
       `SELECT stack_template_id AS "stackTemplateId", name,
               max_stack AS "maxStack"
          FROM stack_template
         ORDER BY stack_template_id`,
     ),
 
-    pool.query(
+    // slot과 rarity를 목록 타입이 아니라 string으로 두는 건 equip과 같은 이유다.
+    pool.query<{
+      gearTemplateId: number;
+      name: string;
+      slot: string;
+      rarity: string;
+      baseAttackPower: number;
+      baseHealth: number;
+      baseArmor: number;
+      baseCrit: number;
+    }>(
       `SELECT gear_template_id AS "gearTemplateId", name, slot, rarity,
               base_attack_power  AS "baseAttackPower",
               base_health        AS "baseHealth",
@@ -39,7 +59,14 @@ export async function getTemplates() {
 
     // 비용표 열 행을 통째로 보낸다. 클라이언트가 "다음 단계는 얼마"를 그릴 때
     // 서버에 다시 묻지 않게 하려는 것이고, 열 행이면 그래도 될 만큼 작다.
-    pool.query(
+    pool.query<{
+      upgradeLevel: number;
+      successRate: number;
+      crestStackTemplateId: number;
+      crestAmount: number;
+      materialStackTemplateId: number;
+      materialAmount: number;
+    }>(
       `SELECT upgrade_level              AS "upgradeLevel",
               success_rate               AS "successRate",
               crest_stack_template_id    AS "crestStackTemplateId",
@@ -57,7 +84,14 @@ export async function getTemplates() {
     // TIME_SCALE로 나눈 뒤의 값을 보낸다. 클라이언트가 배속이라는 개념을 몰라도
     // 되고, 배속이 개발용 손잡이라는 사실이 서버 안에 남는다. 나눗셈이 두 곳에
     // 생기지 않는 것도 이유다 — 성장 판정도 서버가 나눠서 한다.
-    pool.query(
+    pool.query<{
+      cropTemplateId: number;
+      seedStackTemplateId: number;
+      cropStackTemplateId: number;
+      cropAmount: number;
+      harvestGold: number;
+      growthSeconds: number;
+    }>(
       `SELECT crop_template_id       AS "cropTemplateId",
               seed_stack_template_id AS "seedStackTemplateId",
               crop_stack_template_id AS "cropStackTemplateId",
@@ -72,7 +106,13 @@ export async function getTemplates() {
       [TIME_SCALE],
     ),
 
-    pool.query(
+    pool.query<{
+      recipeId: number;
+      ingredientStackTemplateId: number;
+      ingredientAmount: number;
+      craftedStackTemplateId: number;
+      craftedAmount: number;
+    }>(
       `SELECT recipe_id                    AS "recipeId",
               ingredient_stack_template_id AS "ingredientStackTemplateId",
               ingredient_amount            AS "ingredientAmount",
@@ -87,7 +127,14 @@ export async function getTemplates() {
     // 깨진다(2026-09-30).
     //
     // 공격 간격은 작물의 growthSeconds와 같은 이유로 초 단위 숫자로 편다.
-    pool.query(
+    pool.query<{
+      monsterTemplateId: number;
+      name: string;
+      hp: number;
+      armor: number;
+      autoAttack: number;
+      autoAttackSeconds: number;
+    }>(
       `SELECT monster_template_id AS "monsterTemplateId", name, hp, armor,
               auto_attack AS "autoAttack",
               EXTRACT(EPOCH FROM auto_attack_interval)::float8 AS "autoAttackSeconds"
@@ -97,7 +144,12 @@ export async function getTemplates() {
 
     // 팩 구성은 표 모양 그대로 한 행씩 보낸다. 팩별로 묶는 일은 클라이언트가 한다 —
     // 위의 다섯 목록도 전부 평평한 행이라, 이것만 중첩 객체로 보내면 규칙이 둘이 된다.
-    pool.query(
+    pool.query<{
+      dungeonTemplateId: number;
+      packNumber: number;
+      monsterTemplateId: number;
+      amount: number;
+    }>(
       `SELECT dungeon_template_id AS "dungeonTemplateId",
               pack_number AS "packNumber",
               monster_template_id AS "monsterTemplateId",

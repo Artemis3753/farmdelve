@@ -17,7 +17,11 @@ import { spendStack, gainStack } from './stack.js';
 // player 행을 잠그지 않는 것에 주의. 잠금 순서는 player → 밭 칸/장비 → 스택으로
 // 통일했는데, 정제는 골드를 건드리지 않아서 맨 앞 칸을 쓸 일이 없다. 순서를 지킨다는
 // 것은 "항상 전부 잠근다"가 아니라 "잠그는 것들의 앞뒤를 뒤집지 않는다"는 뜻이다.
-export async function craftItem(playerId, recipeId) {
+//
+// 반환 타입은 equip과 같은 이유로 적지 않는다(2026-11-22 결정).
+export async function craftItem(playerId: number, recipeId: number) {
+  // client에 타입을 적지 않는 이유: pool.connect()가 PoolClient를 돌려준다고
+  // @types/pg가 이미 알려 주므로 TS가 알아서 붙인다. 적어도 같은 말의 반복이다.
   const client = await pool.connect();
 
   try {
@@ -25,7 +29,20 @@ export async function craftItem(playerId, recipeId) {
 
     // 레시피는 정의 테이블이라 잠그지 않는다. 아무도 바꾸지 않는 값이고,
     // 잠그면 같은 레시피를 쓰는 요청들이 서로를 기다리게 될 뿐이다.
-    const recipe = await client.query(
+    //
+    // 제네릭의 키가 snake_case인 이유: pg는 열 이름을 바꾸지 않고 그대로 행의
+    // 키로 쓴다. 약속은 "DB가 실제로 주는 모양"이어야 하므로 SELECT와 똑같이
+    // 적는다. camelCase로 바꾸는 건 아래 구조 분해의 몫이다.
+    //
+    // 넷 다 number인 이유: schema.sql에서 네 열이 모두 INTEGER이고, pg는
+    // INTEGER를 JS 숫자로 바꿔 준다. BIGINT나 NUMERIC이었다면 JS 숫자로
+    // 정확히 담을 수 없어서 문자열로 오므로 string이 맞았다.
+    const recipe = await client.query<{
+      ingredient_stack_template_id: number;
+      ingredient_amount: number;
+      crafted_stack_template_id: number;
+      crafted_amount: number;
+    }>(
       `SELECT ingredient_stack_template_id, ingredient_amount,
               crafted_stack_template_id, crafted_amount
          FROM recipe
@@ -64,6 +81,9 @@ export async function craftItem(playerId, recipeId) {
       ],
     };
   } catch (err) {
+    // strict에서 err의 타입은 unknown이다 — throw는 문자열이든 숫자든 무엇이든
+    // 던질 수 있어서 TS가 모양을 장담하지 못한다. 여기선 꺼내 쓰지 않고 그대로
+    // 다시 던지기만 하므로 좁힐 필요가 없다.
     await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {

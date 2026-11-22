@@ -13,7 +13,10 @@ import { spendStack } from './stack.js';
 
 // 강화를 한 번 시도한다. 성공이든 실패든 재료는 나가고, 그 결과를 돌려준다.
 // 재료가 모자라거나 이미 +10이면 아무것도 소모하지 않고 throw한다.
-export async function attemptUpgrade(playerId, gearInstanceId) {
+//
+// 반환 타입은 equip과 같은 이유로 적지 않는다(2026-11-22 결정). 아래 제네릭의
+// 숫자 열은 schema.sql에서 전부 INTEGER라 number다.
+export async function attemptUpgrade(playerId: number, gearInstanceId: number) {
   // pool.query()가 아니라 pool.connect()인 이유: 트랜잭션은 "같은 연결"에서
   // 이어져야 한다. pool.query()는 매번 남는 연결을 아무거나 집어 쓰므로,
   // BEGIN과 COMMIT이 서로 다른 연결로 날아가 트랜잭션이 성립하지 않는다.
@@ -24,7 +27,7 @@ export async function attemptUpgrade(playerId, gearInstanceId) {
 
     // 장비를 재료보다 먼저 잠근다. 잠그는 순서를 코드 전체에서 하나로 지키면
     // 두 요청이 서로가 쥔 잠금을 마주 기다리는 교착이 생기지 않는다.
-    const gear = await client.query(
+    const gear = await client.query<{ upgrade_level: number }>(
       `SELECT upgrade_level FROM gear_instance
         WHERE gear_instance_id = $1 AND player_id = $2
         FOR UPDATE`,
@@ -49,10 +52,21 @@ export async function attemptUpgrade(playerId, gearInstanceId) {
     // 단계로 조회한다.
     //
     // 위에서 만렙을 걸렀으므로 이 값은 1~10이고, 그 열 행은 seed.sql이 전부
-    // 넣어두므로 조회 결과가 비는 경우는 없다.
+    // 넣어두므로 조회 결과가 비는 경우는 없다. TS도 이걸 검사하지 않는다 —
+    // noUncheckedIndexedAccess를 끈 상태라 rows[0]을 늘 있는 것으로 본다.
     const targetLevel = currentLevel + 1;
 
-    const cost = await client.query(
+    // successRate가 number여야 아래 주사위 비교(< successRate)가 숫자 비교가 된다.
+    // 열을 NUMERIC으로 바꾸면 pg가 문자열로 주는데, 그건 제네릭이 잡지 못한다 —
+    // 약속은 실행 중에 확인되지 않는다. 그래서 schema.sql의 INTEGER와 이 타입을
+    // 함께 바꿔야 한다.
+    const cost = await client.query<{
+      success_rate: number;
+      crest_stack_template_id: number;
+      crest_amount: number;
+      material_stack_template_id: number;
+      material_amount: number;
+    }>(
       `SELECT success_rate,
               crest_stack_template_id, crest_amount,
               material_stack_template_id, material_amount
