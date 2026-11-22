@@ -55,6 +55,7 @@ jobs:
             cache-dependency-path: server/package-lock.json
         - run: npm ci
         - run: npm run build
+        - run: npm run typecheck
         - run: psql -v ON_ERROR_STOP=1 -f db/schema.sql
         - run: psql -v ON_ERROR_STOP=1 -f db/seed.sql 
         - run: npm test

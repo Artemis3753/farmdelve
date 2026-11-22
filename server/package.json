@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node --env-file=.env dist/index.js",
     "test": "vitest run",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc",
     "db:reset": "set -a && . ./.env && set +a && psql -v ON_ERROR_STOP=1 \"$DATABASE_URL\" -f db/schema.sql && psql -v ON_ERROR_STOP=1 \"$DATABASE_URL\" -f db/seed.sql"
   },
   "keywords": [],
