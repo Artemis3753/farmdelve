@@ -8,6 +8,9 @@
 -- 다시 만드는 편이 빠르다. 실 데이터가 생기기 전까지만 유효한 방식이다.
 
 -- 다시 만들기 전에 지운다. 참조하는 쪽을 먼저 지워야 외래 키가 걸리지 않는다.
+-- 함수는 테이블을 막지 않지만(plpgsql 본문은 의존성으로 기록되지 않는다), 아래
+-- CREATE FUNCTION이 같은 이름을 다시 만들 수 있게 먼저 지운다.
+DROP FUNCTION IF EXISTS create_player();
 DROP TABLE IF EXISTS dungeon_run;
 DROP TABLE IF EXISTS monster_pack;
 DROP TABLE IF EXISTS dungeon_tier_template;
@@ -25,9 +28,23 @@ DROP TABLE IF EXISTS stack_template;
 DROP TABLE IF EXISTS player;
 
 
--- 플레이어. 로그인은 미뤄져 있어서 개발 중에는 이 테이블에 행이 하나뿐이다.
+-- 플레이어. 로그인은 미뤄져 있고, 대신 방문자마다 게스트 플레이어가 하나씩
+-- 생긴다(2026-11-23). seed가 만드는 개발용 player 1도 같은 함수로 만든 게스트다.
 CREATE TABLE player (
   player_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+  -- 쿠키에 실려 오는 게스트 식별값. player_id를 그대로 쓰지 않는 이유는 숫자가
+  -- 추측 가능해서다 — 쿠키 값을 7에서 8로 바꾸면 남의 세이브를 조작할 수 있다.
+  -- 비밀번호가 없으니 인증이 아니라 "식별"이다. 이 값을 가진 사람이 곧 주인이다.
+  --
+  -- DEFAULT로 두면 INSERT하는 쪽이 토큰 생성을 잊을 수 없다. gen_random_uuid()는
+  -- PostgreSQL 13부터 내장이라 확장을 설치하지 않아도 된다.
+  guest_token UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+
+  -- 서버가 이 게스트의 요청을 마지막으로 본 시각. 월 1회 정리가 30일 지난
+  -- 게스트를 지울 때 이 값을 본다. 만든 시각으로 시작해야 한 번도 안 돌아온
+  -- 게스트도 30일 뒤에 지워진다.
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
   -- 골드는 crest·물약과 달리 가방 칸을 먹지 않고 종류도 하나뿐이라
   -- player_stack의 한 행이 아니라 여기 컬럼으로 둔다.
@@ -82,7 +99,11 @@ CREATE TABLE stack_template (
 CREATE TABLE gear_instance (
   gear_instance_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   gear_template_id INTEGER NOT NULL REFERENCES gear_template,
-  player_id INTEGER NOT NULL REFERENCES player,
+
+  -- ON DELETE CASCADE: 플레이어가 지워지면 그 장비도 따라 지워진다. 게스트 정리가
+  -- player 한 행만 DELETE하면 끝나게 하려는 것이다. 이게 없으면 자식 행이 남아
+  -- 외래 키 위반으로 DELETE 자체가 실패한다. player를 참조하는 다섯 곳 모두 같다.
+  player_id INTEGER NOT NULL REFERENCES player ON DELETE CASCADE,
 
   -- upgrade 테이블의 같은 이름 컬럼과 외래 키 관계가 아니다. 여기 0은 갓 얻은
   -- 상태이고, upgrade 쪽은 "한 단계 올리는 비용"이라 1부터 시작한다.
@@ -92,7 +113,7 @@ CREATE TABLE gear_instance (
 
 -- 플레이어가 가진 스택 아이템의 개수. 한 종류당 한 행이므로 두 컬럼이 함께 PK다.
 CREATE TABLE player_stack (
-  player_id INTEGER NOT NULL REFERENCES player,
+  player_id INTEGER NOT NULL REFERENCES player ON DELETE CASCADE,
   stack_template_id INTEGER NOT NULL REFERENCES stack_template,
 
   -- 0이 되면 행을 지운다. 0개를 들고 있다는 행이 남으면 가방 칸 계산이 어긋난다.
@@ -104,7 +125,7 @@ CREATE TABLE player_stack (
 
 -- 어느 칸에 무엇이 장착돼 있는지. 칸 자체가 행이고, 내용물은 바뀐다.
 CREATE TABLE player_gear_slot (
-  player_id INTEGER NOT NULL REFERENCES player,
+  player_id INTEGER NOT NULL REFERENCES player ON DELETE CASCADE,
   slot TEXT NOT NULL CHECK (slot IN ('head', 'chest', 'legs', 'feet', 'weapon')),
 
   -- 시작 시점에 방어구 4칸은 비어 있으므로 NULL을 허용한다. UNIQUE를 함께 거는
@@ -183,7 +204,7 @@ CREATE TABLE crop_template (
 -- NOW()와 비교해서 읽을 때마다 계산한다 — 저장하면 매 순간 UPDATE를 돌려야 하고,
 -- 그 사이 DB가 사실과 다른 상태를 들고 있게 된다.
 CREATE TABLE player_plot (
-  player_id INTEGER NOT NULL REFERENCES player,
+  player_id INTEGER NOT NULL REFERENCES player ON DELETE CASCADE,
 
   -- 화면은 0부터 그리지만 여기는 1부터다. 변환은 클라이언트가 보낼 때 한 번만
   -- 하고(i + 1), 서버는 항상 1~25만 본다. 상한을 막지 않으면 화면에 없는
@@ -357,7 +378,7 @@ CREATE TABLE monster_pack (
 CREATE TABLE dungeon_run (
   dungeon_run_id  INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 
-  player_id  INTEGER NOT NULL REFERENCES player,
+  player_id  INTEGER NOT NULL REFERENCES player ON DELETE CASCADE,
   dungeon_template_id  INTEGER NOT NULL REFERENCES dungeon_template,
 
   -- 몇 티어짜리 런인가. dungeon_tier_template이 생기기 전에는 CHECK 하나뿐이었고,
@@ -382,3 +403,92 @@ CREATE TABLE dungeon_run (
   -- ongoing이 아닌 모든 상태(cleared·failed)는 자동으로 end_time을 요구받는다.
   CHECK ((end_time IS NULL) = (status = 'ongoing'))
 );
+
+
+-- 새 플레이어 한 명과 그 시작 상태(장비·재료·밭·씨앗)를 만들고 player_id를 돌려준다.
+--
+-- 함수로 DB 안에 두는 이유: 시작 상태를 쓰는 곳이 둘이다 — seed.sql이 개발용
+-- player 1을 만들 때와, 서버가 방문자에게 게스트를 만들어 줄 때. seed는 SQL이고
+-- 서버는 TS라 둘이 함께 읽을 수 있는 곳이 DB뿐이다. 한쪽에 복사해 두면 임시
+-- 지급 블록을 지우는 날 한쪽만 고쳐져서 개발용 플레이어와 실제 게스트가 조용히
+-- 달라진다(2026-11-23 결정).
+--
+-- LANGUAGE plpgsql인 이유: 방금 만든 player_id를 변수에 담아 아래 INSERT들이
+-- 나눠 써야 한다. 순수 SQL 함수에는 변수가 없다.
+--
+-- 템플릿 표(stack_template, gear_template)를 읽으므로 seed가 템플릿을 다 넣은
+-- 뒤에 불러야 한다. 템플릿이 비어 있으면 에러 없이 빈손의 플레이어가 생긴다.
+--
+-- 전체가 함수 호출 한 번이라 하나의 문장으로 실행된다 — 중간에 실패하면 반쯤
+-- 만들어진 플레이어가 남지 않고 통째로 취소된다.
+CREATE FUNCTION create_player() RETURNS INTEGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  new_player_id INTEGER;
+BEGIN
+  -- 1. 플레이어 행. guest_token·last_seen_at·gold·highest_tier_cleared 모두
+  --    DEFAULT가 있어서 값을 하나도 안 써도 된다.
+  INSERT INTO player DEFAULT VALUES
+    RETURNING player_id INTO new_player_id;
+
+  -- 2. 장비 정의마다 실물을 하나씩 준다. 정의를 그대로 읽어 옮기므로 장비 종류가
+  --    늘어도 이 블록은 손댈 필요가 없다. upgrade_level은 DEFAULT 0, 갓 얻은 상태다.
+  INSERT INTO gear_instance (gear_template_id, player_id)
+  SELECT gear_template_id, new_player_id
+    FROM gear_template;
+
+  -- 3. 장비 칸 5개를 만들면서 방금 만든 실물을 각자 자리에 끼운다. 어느 칸에
+  --    들어가는지(slot)는 "이 낫"이 아니라 "낫이라는 물건"의 성질이라 템플릿에
+  --    있어서 JOIN이 필요하다. 해제가 없으므로 이 다섯 칸은 앞으로도 비지 않는다.
+  --
+  --    WHERE가 꼭 있어야 한다. seed에 있던 원래 블록은 플레이어가 한 명뿐이라
+  --    모든 gear_instance를 읽어도 됐지만, 여기서 빼면 다른 플레이어의 장비까지
+  --    새 플레이어의 칸에 끼우려다 PK·UNIQUE 위반이 난다.
+  INSERT INTO player_gear_slot (player_id, slot, gear_instance_id)
+  SELECT i.player_id, t.slot, i.gear_instance_id
+    FROM gear_instance i
+    JOIN gear_template t ON i.gear_template_id = t.gear_template_id
+   WHERE i.player_id = new_player_id;
+
+  -- 4. 강화 재료. 재료가 들어올 통로(드랍·정제 루프)가 아직 약해서 놓은 임시
+  --    지급이다. 수량은 +10 기댓값보다 넉넉하게 — 세 확률 구간(100/70/40%)을 한 번에
+  --    통과해 볼 수 있게. 재료를 얻는 경로가 생기면 이 블록은 지운다.
+  INSERT INTO player_stack (player_id, stack_template_id, amount)
+  SELECT
+    new_player_id,
+    (SELECT stack_template_id FROM stack_template WHERE name = v.name),
+    v.amount
+  FROM (VALUES
+    ('Seed Crest',       20),
+    ('Sprout Crest',     20),
+    ('Harvest Crest',    20),
+    ('Refined Ironroot', 40)
+  ) AS v(name, amount);
+
+  -- 5. 가방에 여분 장비 두 점. 2번의 다섯 점이 전부 장착돼 있어서 이게 없으면 장착
+  --    화면에 바꿔 낄 대상이 없다. +3은 밸런스가 아니라 눈에 보이라고 — 같은 이름이
+  --    둘이면 어느 쪽이 끼워졌는지 "+3"으로 구분된다. 칸에 넣지 않은 실물이 곧
+  --    가방에 있는 장비다. 드랍이 생기면 이 블록은 지운다.
+  INSERT INTO gear_instance (gear_template_id, player_id, upgrade_level)
+  SELECT gear_template_id, new_player_id, 3
+    FROM gear_template
+   WHERE name IN ('Solid Scythe', 'Straw Hat');
+
+  -- 6. 밭 25칸을 빈 채로. 칸 자체가 행이라 심기 전에도 있어야 FOR UPDATE가 잠글
+  --    행이 생긴다. crop_template_id·planted_at이 함께 NULL인 것이 빈 칸이다.
+  INSERT INTO player_plot (player_id, plot_number)
+  SELECT new_player_id, n
+    FROM generate_series(1, 25) AS n;
+
+  -- 7. 씨앗을 작물당 10개씩. 40개로 25칸을 다 채울 수는 있지만 한 종류로 도배는
+  --    못 해서 무엇을 심을지가 선택이 된다. 4번과 달리 수확이 씨앗을 돌려주는 통로가
+  --    이미 있어서, 이건 순환을 시작시키는 초기 자본이라 계속 남는다.
+  INSERT INTO player_stack (player_id, stack_template_id, amount)
+  SELECT new_player_id, stack_template_id, 10
+    FROM stack_template
+   WHERE name IN ('Wheat Seed', 'Potato Seed', 'Chili Pepper Seed', 'Ironroot Seed');
+
+  RETURN new_player_id;
+END;
+$$;

@@ -10,6 +10,11 @@ export default defineConfig({
     // 순간 읽으므로, 서비스를 import하는 테스트보다 먼저 정해져 있어야 한다.
     env: {
       DATABASE_URL: 'postgresql://localhost/farmdelve_test',
+
+      // HTTP 테스트가 app.ts 전체를 import하면서 config.ts까지 읽힌다. config.ts는
+      // TIME_SCALE이 없으면 즉시 죽는다(폴백 없음). 1은 실제 속도 — 테스트가 배속에
+      // 기대는 곳은 아직 없어서 가장 정직한 값을 둔다. CI도 이 값을 쓴다.
+      TIME_SCALE: '1',
     },
 
     // 모든 테스트 파일이 시작되기 전에 먼저 실행된다. 연습 주방이 맞는지 점검하는 곳.

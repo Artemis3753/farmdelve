@@ -5,7 +5,7 @@ of the eighteen exist with their columns named — the upgrading slice built
 seven, the farm slice three, the dungeon slice five. The remaining three get
 theirs when their slice arrives.
 
-Last updated: 2026-09-30
+Last updated: 2026-09-30. Guest player columns added 2026-11-23.
 
 ## Naming convention
 
@@ -43,7 +43,7 @@ Four column rules, settled 2026-08-27 while naming the first slice:
 
 | Table | Holds |
 |---|---|
-| `player` | Gold, highest tier cleared. Account details land here later if login is ever added. **No level or XP column** — gear is the only growth axis, and talent points derive from `highest_tier_cleared`. **Gold is a column here, not a row in `player_stack`** (2026-08-27): it has no max stack, it does not take a bag slot the way potions do, and upgrading, repairing, and shops all read and write it inside transactions where a join would only add a lock to take. A second currency would be the day to reconsider — the same call made for `recipe`. |
+| `player` | Gold, highest tier cleared, and since 2026-11-23 the guest's cookie token (`guest_token`) and when they were last seen (`last_seen_at`). Account details land here later if login is ever added. **No level or XP column** — gear is the only growth axis, and talent points derive from `highest_tier_cleared`. **Gold is a column here, not a row in `player_stack`** (2026-08-27): it has no max stack, it does not take a bag slot the way potions do, and upgrading, repairing, and shops all read and write it inside transactions where a join would only add a lock to take. A second currency would be the day to reconsider — the same call made for `recipe`. |
 | `player_talent` | Which talents this player has taken. |
 
 ## Items
@@ -105,9 +105,10 @@ Seven tables. Everything else waits for its own slice.
 ```
 player                            gear_template
   player_id              PK         gear_template_id        PK
-  gold                              name
-  highest_tier_cleared              slot
-                                    rarity
+  guest_token  (2026-11-23)         name
+  last_seen_at (2026-11-23)         slot
+  gold                              rarity
+  highest_tier_cleared
 stack_template                      base_attack_power
   stack_template_id      PK         base_health
   name                              base_armor
@@ -144,6 +145,20 @@ Notes worth keeping:
   earn a lookup table.
 - Nothing derived is stored: no computed stats, no talent point total, no
   bag position.
+- `player.guest_token` is a `UUID` filled by `gen_random_uuid()`, so no
+  insert can forget it, and `UNIQUE`, which also gives the per-request
+  lookup its index. A counting id would let anyone guess the next player's
+  cookie. `last_seen_at` defaults to `now()` rather than NULL: a guest who
+  never comes back must still fall under "unseen for 30 days", and a NULL
+  never compares true.
+- The five tables that hang off `player` (`gear_instance`, `player_stack`,
+  `player_gear_slot`, `player_plot`, `dungeon_run`) reference it
+  `ON DELETE CASCADE`, so the guest cleanup is one `DELETE FROM player`.
+  The cost is that deleting a player by mistake takes everything with it.
+- A new player's starting state (gear, materials, plots, seeds) is the
+  plpgsql function `create_player()` in `schema.sql`. The seed and the
+  server both call it, so the development player and every guest start
+  the same.
 
 ## Not in the database
 

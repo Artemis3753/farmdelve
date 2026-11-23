@@ -4,13 +4,17 @@ Every endpoint the server answers, in one format. The README carries a
 one-line table for readers; this file is the working copy — request bodies,
 response shapes and every rejection reason spelled out.
 
-Read from `server/index.js` and `server/services/*.js` on 2026-09-14.
+Read from `server/index.js` and `server/services/*.js` on 2026-09-14. The
+guest player parts were added from `server/app.ts` and
+`server/services/guest.ts` on 2026-11-23; the server has been TypeScript
+since 2026-11-22, and `index.js` below now means `app.ts`.
 **If the two ever disagree, the code is right and this file is stale.**
 
 | Method | Path | |
 |---|---|---|
 | `GET` | `/api/health` | is the database reachable |
 | `GET` | `/api/templates` | balance-patch data, fetched once |
+| `POST` | `/api/guest` | creates a guest and sets its cookie |
 | `GET` | `/api/player` | everything that changes |
 | `POST` | `/api/gear/:gearInstanceId/upgrade` | rolls for +1 |
 | `PUT` | `/api/gear/:gearInstanceId/equip` | idempotent |
@@ -22,8 +26,23 @@ Read from `server/index.js` and `server/services/*.js` on 2026-09-14.
 
 ## Shared rules
 
-- There is **no login yet**. `index.js` holds `PLAYER_ID = 1` and every
-  request is that player's. `design-backlog.md` §4 defers Google OAuth.
+- There is **no login**; each browser is a **guest player** (2026-11-23).
+  `requirePlayerMiddleware` sits in front of every route below
+  `/api/guest` in the table above. It reads the `farmdelve_guest` cookie,
+  looks the token up, and writes the player id into `res.locals.playerId`,
+  which is all the routes read. No cookie, a value that is not UUID-shaped,
+  and a token nobody has all get the same answer:
+
+  ```
+  401   { reason: 'guest_not_found' }
+  ```
+
+  The client's move is the same in all three cases, so the reasons are not
+  split. The UUID check runs before the query for the same reason as the
+  integer check below: `'abc'` would reach pg as `22P02` and come back 500.
+  Because the middleware is mounted on `/api`, a mistyped `/api` path
+  without a cookie is a 401, not a 404. Google OAuth stays deferred in
+  `design-backlog.md` §4.
 - Errors come back as `{ reason }`, sometimes `{ reason, details }`. A 500 is
   always `{ reason: 'internal_error' }` with the cause logged server-side
   only — pg messages can carry table structure or connection details.
@@ -90,8 +109,46 @@ body  none
 `player` spreads `gold` and `highestTierCleared` at the top level.
 `equipped` is an object keyed by slot, not an array.
 
-> The 404 cannot happen while `PLAYER_ID` is hardcoded, but returning
-> `undefined` fields would be less honest. This is the one place that builds
+> The middleware has just found this player, so the 404 needs the row to be
+> deleted between the two queries. Returning `undefined` fields would be
+> less honest.
+
+---
+
+## Guest
+
+### `POST /api/guest`
+
+```
+body  none
+201   { created: true }    + Set-Cookie farmdelve_guest=<uuid>
+200   { created: false }   the request already had a valid cookie
+429   { reason: 'too_many_guests' }
+500   internal_error
+```
+
+> The token travels in the cookie only, never in the body: the cookie is
+> `HttpOnly` so page scripts cannot read it, and a copy in the body would
+> undo that. The cookie is also `SameSite=Lax`, `Path=/`, one year long,
+> and `Secure` only when `NODE_ENV` is `production` (development is plain
+> `http://localhost`). A guest's real lifetime is set by the planned monthly
+> cleanup of guests unseen for 30 days, not by the cookie.
+>
+> `POST`, not `GET`: link previews and prefetching send `GET`s on their own,
+> and each one would create a player.
+>
+> The 200 stops a repeat that arrives **after** the first response's cookie
+> was stored. Two requests that arrive together without a cookie both
+> create a guest; React's StrictMode does exactly that in development.
+>
+> Limited to five per IP address per hour, counted in server memory and
+> counted before the handler runs, so a 200 uses one too. Behind CloudFront
+> every visitor would share CloudFront's addresses until `trust proxy` is
+> set, which is left for the AWS step.
+>
+> The new player's starting state comes from the database function
+> `create_player()`, the same one `seed.sql` calls for the development
+> player. This is the one place that builds
 > the error by hand instead of calling `serviceError`.
 
 ---
@@ -280,4 +337,5 @@ and the best tier and nothing else.
 - The remaining dungeon tables — `dungeon_drop`, and whatever the boss
   needs. Drop rules are still open.
 - Rewards on the completion response.
-- Accounts and login (`design-backlog.md` §4).
+- Accounts and login (`design-backlog.md` §4). Guests stand in for them.
+- The monthly cleanup of guests unseen for 30 days.
