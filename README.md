@@ -14,6 +14,7 @@ In development. Working end to end, from the screen to the database:
 - **Crafting** — refine produce into an upgrade material
 - **Gear upgrading** — spend materials on a `+1` roll that can fail
 - **Inventory and equipping**
+- **Guest players** — every browser gets its own save without signing up
 
 The dungeon screen runs combat in the browser only. Arrow keys or WASD move
 one tile at a time, monster packs aggro and chase, both sides auto-attack, and
@@ -83,8 +84,11 @@ PostgreSQL          15 tables
 ```
 
 - `server/services/` — one file per feature. None of them know about `req` or
-  `res`; they throw a `ServiceError` carrying a status code, and `index.ts`
+  `res`; they throw a `ServiceError` carrying a status code, and `app.ts`
   turns it into the response.
+- `server/app.ts` builds the Express app and `server/index.ts` only starts
+  listening, so the HTTP tests can send requests to a fresh app without
+  opening a port.
 - `server/db/` — `schema.sql` and `seed.sql`. No migration tool.
 - `client/src/screens/` — one file per screen, switched by `useState` rather
   than a router.
@@ -113,6 +117,7 @@ service container. `main` only accepts a pull request once both jobs pass.
 |---|---|---|
 | `GET` | `/api/health` | database reachable? |
 | `GET` | `/api/templates` | static data — item names, crops, recipes, upgrade costs. Fetched once |
+| `POST` | `/api/guest` | creates a guest player and sets its cookie |
 | `GET` | `/api/player` | everything that changes — gold, stacks, gear, plots |
 | `POST` | `/api/gear/:gearInstanceId/upgrade` | rolls for `+1`. The roll is server-side |
 | `PUT` | `/api/gear/:gearInstanceId/equip` | idempotent, so `PUT` rather than `POST` |
@@ -128,9 +133,23 @@ but the state disagreed — the plot is empty, the crop is not ready, the
 materials are short. A failed upgrade roll is **not** a 409: the materials
 really were spent, so it commits and returns `{ upgraded: false }`.
 
+Every route below `/api/guest` in the table needs the `farmdelve_guest`
+cookie. Without a valid one the answer is **401** `{ reason: 'guest_not_found' }`,
+and the client then calls `POST /api/guest` once and retries. That cookie
+holds a random UUID, is `HttpOnly` and `SameSite=Lax`, and is `Secure` when
+`NODE_ENV` is `production`. One IP address can create five guests an hour;
+the sixth gets a **429**. Each new guest starts from the same database
+function, `create_player()`, that the seed uses for its development player.
+
 ## ⚠️ Known limitations
 
-- **No accounts.** Every request runs as player 1.
+- **No accounts.** A save belongs to a browser cookie, so clearing cookies
+  or switching browsers starts a new guest, and the old save cannot be
+  recovered.
+- **Old guests are not cleaned up yet.** Guests unseen for 30 days are meant
+  to be deleted once a month, by a job that comes with the deployment.
+  `last_seen_at` is already updated on every request to a route that needs
+  the cookie.
 - **Not deployed yet.** Runs locally only until the AWS deployment is done.
 - **No migrations.** `schema.sql` drops and recreates everything, so
   `npm run db:reset` wipes the save.

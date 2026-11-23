@@ -899,9 +899,42 @@ One branch and one pull request per step, merged only when CI is green.
    app. No catch-all route: the client has no URL routing.
 4. **AWS** — A billing alarm goes up before
    anything else; deploys use OIDC rather than stored keys; secrets stay out
-   of the repo; the database port is not public.
+   of the repo; the database port is not public. Decided 2026-11-23: one
+   EC2 `t4g.micro` in Sydney running the existing `compose.yaml` (app and
+   PostgreSQL containers), about $13 a month, so the $120 credit lasts
+   roughly nine months. HTTPS through CloudFront on its default
+   `*.cloudfront.net` domain, with caching off for `/api`; if that runs
+   late, the fallback is the instance's IP over plain HTTP. Not yet
+   confirmed: that a Free plan account can use CloudFront.
 
 Out of scope for this plan: an ORM, migrations, login, monitoring.
+
+### Guest players (2026-11-23)
+
+Every browser gets its own player without signing up. Needed before the
+deployment: with every request running as player 1, strangers on the public
+URL would share one save and overwrite each other, and the leaderboard in
+§5 would rank a single player.
+
+- **Rejected: one shared save, reset daily.** Cheaper, but it leaves the
+  leaderboard meaningless and visitors still collide.
+- **Identity:** a random UUID in `player.guest_token`, not the player id.
+  An id counts up, so the next cookie would be guessable.
+- **Transport:** an `HttpOnly`, `SameSite=Lax` cookie, `Secure` in
+  production. Page scripts cannot read it, so an XSS bug cannot leak it;
+  `Lax` keeps it off POSTs started from other sites. Chosen over a token
+  in `localStorage`, which scripts can read. This identifies a browser, it
+  does not authenticate a person.
+- **Creation:** `POST /api/guest`, called by the client when a game route
+  answers 401. Limited to five per IP address per hour. **Rejected: one per
+  IP**, because homes, offices and mobile carriers share one public IP,
+  and the second person in a house would be locked out. An attacker who
+  keeps changing IP is not stopped; accepted.
+- **Cleanup:** once a month, delete guests whose `last_seen_at` is more
+  than 30 days old. Every request that passes the cookie check moves
+  `last_seen_at` forward. The job ships with the deployment.
+- **Starting state:** the database function `create_player()`, so the seed
+  and the server cannot drift apart.
 
 ### Persistence (2026-08-25)
 
@@ -1287,7 +1320,8 @@ Table list is settled — see `data-model.md`. What is left:
   over to seeds. Gold gets its sink from upgrade costs instead (see §1).
 - **Accessory gear slots** — added later as a chance drop from dungeons.
 - **Accounts and login** — **Google OAuth, confirmed as the approach, but
-  deferred.** Development runs against a hardcoded player 1 for now. Auth
+  deferred.** Since 2026-11-23 each browser is a guest player instead (see
+  §1 *Guest players*); before that, every request ran as player 1. Auth
   is nearly independent of game logic, so swapping in real login later
   costs little.
 - **Durability, entirely** (2026-08-25). Repair costs were cut first, and
