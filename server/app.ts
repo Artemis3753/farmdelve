@@ -97,6 +97,31 @@ async function requirePlayerMiddleware(
 export function createApp() {
   const app = express();
 
+  // trust proxy: 요청 앞에 프록시가 몇 겹 서 있는지 Express에게 알려 준다. 배포에서는
+  // CloudFront가 방문자 요청을 받아 EC2로 넘기므로, Express가 직접 보는 상대 주소는
+  // 언제나 CloudFront다. 진짜 방문자 주소는 CloudFront가 X-Forwarded-For 헤더 끝에
+  // 덧붙여 준다. 숫자 1은 "맨 끝 한 칸만 믿는다"는 뜻이라 req.ip가 그 칸이 된다.
+  //
+  // 헤더의 앞쪽 칸은 방문자가 마음대로 적어 보낼 수 있다. 그래서 true(전부 믿기)가
+  // 아니라 개수로 준다 — true면 방문자가 적은 첫 칸이 req.ip가 되어 속도 제한을
+  // 위조로 피한다. express-rate-limit도 true를 보면 경고를 남긴다.
+  //
+  // 값이 없으면 끈 채로 둔다(로컬 개발, CloudFront 없이 IP로 여는 대안 계획). 프록시가
+  // 없는데 켜 두면 그 헤더를 방문자가 통째로 지어내므로 같은 위조가 된다. 환경마다
+  // 다른 값이라 코드가 아니라 .env에 둔다(2026-11-23 결정).
+  //
+  // 숫자가 아니면 즉시 죽는다. TIME_SCALE과 같은 이유다 — 'true' 같은 오타가 조용히
+  // 무시되거나 전부 믿기로 바뀌는 것보다 안 뜨는 서버가 낫다. createApp() 안에서 읽어서
+  // 테스트가 앱마다 켜고 끈 상태를 따로 만들 수 있다.
+  const trustProxyHops = process.env.TRUST_PROXY_HOPS;
+
+  if (trustProxyHops !== undefined && trustProxyHops !== '') {
+    if (!/^[0-9]+$/.test(trustProxyHops)) {
+      throw new Error('TRUST_PROXY_HOPS must be a whole number of proxies (check .env)');
+    }
+    app.set('trust proxy', Number(trustProxyHops));
+  }
+
   // 요청 본문의 JSON을 파싱해 req.body에 꽂아준다. 라우트 등록보다 위에 있어야
   // 한다 — 미들웨어는 이 줄 아래에 등록된 라우트에만 걸린다.
   app.use(express.json());
@@ -141,9 +166,9 @@ export function createApp() {
   // 기록은 서버 메모리에 둔다(라이브러리 기본값). 서버가 한 대라 충분하고, 재시작하면
   // 횟수가 0으로 돌아가는 것도 감수한다. createApp() 안에서 만드는 이유는 파일 맨 위 주석.
   //
-  // 주의: 배포에서는 CloudFront를 거쳐 오므로, 그대로 두면 모든 방문자가 CloudFront의
-  // IP 몇 개로 보인다. 진짜 방문자 IP를 읽도록 trust proxy를 설정하는 일은 AWS 단계에
-  // 남아 있다.
+  // IP는 req.ip로 센다. 배포에서는 CloudFront를 거쳐 오므로 TRUST_PROXY_HOPS가 없으면
+  // 모든 방문자가 CloudFront의 IP 몇 개로 보이고, 여섯 번째 방문자부터 다 같이 막힌다.
+  // 그 설정은 createApp() 맨 위.
   const guestLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     limit: 5,
