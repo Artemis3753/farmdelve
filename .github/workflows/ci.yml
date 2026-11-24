@@ -66,3 +66,16 @@ jobs:
             - run: docker build -t farmdelve .
             - run: docker run -d -p 3001:3001 -e TIME_SCALE=1 farmdelve
             - run: curl --retry 10 --retry-all-errors --retry-delay 1 -f localhost:3001/
+  fd-image: 
+        needs: [fd-build, fd-server, fd-docker]
+        if: github.event_name == 'push'
+        runs-on: ubuntu-24.04-arm
+        permissions:
+            contents: read
+            packages: write
+        steps:
+            - uses: actions/checkout@v7
+            - run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            - run: docker build -t ghcr.io/artemis3753/farmdelve:latest -t ghcr.io/artemis3753/farmdelve:${{ github.sha }} .
+            - run: docker push --all-tags ghcr.io/artemis3753/farmdelve
+
