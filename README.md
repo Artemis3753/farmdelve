@@ -6,6 +6,15 @@ A single-player browser game where the farm feeds the dungeon: grow crops,
 refine them into upgrade materials, push your gear to `+1`, `+2`, … and take
 it into a timed dungeon run.
 
+## 🎬 Devlog #1 (November 2026)
+
+A two-and-a-half-minute look at where the game stands: farming, gear
+upgrades, the dungeon, guest players, and how the repo is built and checked.
+Crop growth is sped up 60× for the recording, and the music was added in
+editing.
+
+https://github.com/user-attachments/assets/5631b6dc-7263-42ef-97a9-3319c50263b0
+
 ## 🚧 Status
 
 In development. Working end to end, from the screen to the database:
