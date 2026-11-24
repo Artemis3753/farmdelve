@@ -11,24 +11,27 @@ it into a timed dungeon run.
 In development. Working end to end, from the screen to the database:
 
 - **Farming** — plant a crop, wait for it to grow, harvest produce and gold
-- **Crafting** — refine produce into an upgrade material
 - **Gear upgrading** — spend materials on a `+1` roll that can fail
 - **Inventory and equipping**
 - **Guest players** — every browser gets its own save without signing up
+
+Crafting, which refines produce into an upgrade material, has an endpoint
+(`POST /api/craft/:recipeId`) but no screen yet.
 
 The dungeon screen runs combat in the browser only. Arrow keys or WASD move
 one tile at a time, monster packs aggro and chase, both sides auto-attack, and
 four skills share a global cooldown: two build Rage, two spend it, and one of
 the spenders leaves a bleed. A run can end in defeat but not yet in a clear,
-and the screen does not call the two dungeon endpoints yet.
+and the screen does not call the two dungeon endpoints yet. The tier, timer
+and pull counter at the top of the screen are fixed placeholders.
 
 ## 🏃 Running it locally
 
 ### With Docker
 
 Needs only Docker with Compose. Copy `.env.example` to `.env` at the repo
-root and set a password — letters and digits only, since it goes into a
-connection URL.
+root and replace the placeholder password. Stick to letters, digits and
+hyphens, since it goes into a connection URL unescaped.
 
 ```bash
 cp .env.example .env
@@ -107,9 +110,15 @@ so the pages and `/api` share one origin and there is still no CORS. The
 `Dockerfile` builds the client and the server in separate stages and keeps
 only their output and the production dependencies in the final image.
 
-GitHub Actions runs on every pull request: the client is built, linted and
-tested, and the server is built, type-checked and tested against a PostgreSQL 17
-service container. `main` only accepts a pull request once both jobs pass.
+GitHub Actions runs three jobs on every pull request. `fd-build` builds, lints
+and tests the client. `fd-server` builds, type-checks and tests the server
+against a PostgreSQL 17 service container. `fd-docker` builds the image, starts
+it and checks that it serves the client. A ruleset on `main` accepts changes
+only through a pull request, and only once all three jobs pass.
+
+On a push to `main`, a fourth job, `fd-image`, runs after those three and
+publishes an arm64 image to GitHub Container Registry as
+`ghcr.io/artemis3753/farmdelve`, tagged `latest` and with the commit SHA.
 
 ## 🔌 API
 
