@@ -13,7 +13,7 @@ upgrades, the dungeon, guest players, and how the repo is built and checked.
 Crop growth is sped up 60× for the recording, and the music was added in
 editing.
 
-https://github.com/user-attachments/assets/5631b6dc-7263-42ef-97a9-3319c50263b0
+https://github.com/user-attachments/assets/d5f36c69-26d4-486b-a2f6-7fe2a6e8eaa1
 
 ## 🚧 Status
 
