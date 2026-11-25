@@ -897,15 +897,19 @@ One branch and one pull request per step, merged only when CI is green.
    database port is not published. Express now serves the built client from
    `client/dist` — moved up from the AWS step so that the image is the whole
    app. No catch-all route: the client has no URL routing.
-4. **AWS** — A billing alarm goes up before
-   anything else; deploys use OIDC rather than stored keys; secrets stay out
-   of the repo; the database port is not public. Decided 2026-11-23: one
-   EC2 `t4g.micro` in Sydney running the existing `compose.yaml` (app and
-   PostgreSQL containers), about $13 a month, so the $120 credit lasts
-   roughly nine months. HTTPS through CloudFront on its default
-   `*.cloudfront.net` domain, with caching off for `/api`; if that runs
-   late, the fallback is the instance's IP over plain HTTP. Not yet
-   confirmed: that a Free plan account can use CloudFront.
+4. **AWS** — done 2026-11-25, live at
+   https://d3vo9j7lhnrych.cloudfront.net. A billing alarm went up before
+   anything else; secrets stay out of the repo; the database port is not
+   public. Decided 2026-11-23: one EC2 `t4g.micro` in Sydney running the
+   existing `compose.yaml` (app and PostgreSQL containers), about $13 a
+   month, so the $120 credit lasts roughly nine months. HTTPS through
+   CloudFront on its default `*.cloudfront.net` domain, with caching off
+   for `/api` — a Free plan account could use it after all, so the plain
+   HTTP fallback was not needed. CI pushes an arm64 image to GHCR and the
+   server pulls it. **Not done: automated deploys.** The plan said deploys
+   would use OIDC rather than stored keys; there is no deploy job at all
+   yet, so no AWS key exists anywhere, and a new version is pulled onto the
+   server by hand. Settings and teardown: `docs/deploy.md`.
 
 Out of scope for this plan: an ORM, migrations, login, monitoring.
 
@@ -932,7 +936,8 @@ URL would share one save and overwrite each other, and the leaderboard in
   keeps changing IP is not stopped; accepted.
 - **Cleanup:** once a month, delete guests whose `last_seen_at` is more
   than 30 days old. Every request that passes the cookie check moves
-  `last_seen_at` forward. The job ships with the deployment.
+  `last_seen_at` forward. Runs as a cron job on the instance since
+  2026-11-25 (`docs/deploy.md`).
 - **Starting state:** the database function `create_player()`, so the seed
   and the server cannot drift apart.
 
@@ -1425,7 +1430,7 @@ nine more tiers would mostly be numbers. Everything cut is listed in §4.
 - [x] **CI** — GitHub Actions, merging blocked unless green
 - [x] **TypeScript on the server**
 - [x] **Docker**
-- [ ] **Deployed and reachable at a URL, on AWS.** Project 1 was never
+- [x] **Deployed and reachable at a URL, on AWS.** Project 1 was never
       deployed; this one ships.
 
 **Finish** (art and playtesting added 2026-11-22)
