@@ -6,6 +6,10 @@ A single-player browser game where the farm feeds the dungeon: grow crops,
 refine them into upgrade materials, push your gear to `+1`, `+2`, … and take
 it into a timed dungeon run.
 
+**Play it:** https://d3vo9j7lhnrych.cloudfront.net — each browser gets its
+own save without signing up, and crops grow ten times faster than their
+design times so a harvest comes within minutes.
+
 ## 🎬 Devlog #1 (November 2026)
 
 A two-and-a-half-minute look at where the game stands: farming, gear
@@ -129,6 +133,25 @@ On a push to `main`, a fourth job, `fd-image`, runs after those three and
 publishes an arm64 image to GitHub Container Registry as
 `ghcr.io/artemis3753/farmdelve`, tagged `latest` and with the commit SHA.
 
+### Deployment
+
+```
+Browser ──HTTPS──▶ CloudFront
+                       │  HTTP, accepted only from CloudFront
+                       ▼
+                 EC2 t4g.micro (Sydney)
+                   app (image from GHCR) + PostgreSQL 17
+```
+
+The public demo is one EC2 instance running the same `compose.yaml` as
+local development, pulling the image CI built rather than building it.
+CloudFront gives it HTTPS on its own domain and caches nothing under
+`/api`. The security group lets only CloudFront reach the app, which is
+also why Express can trust the visitor address CloudFront forwards for the
+guest rate limit. A cron job deletes guests unseen for 30 days once a month.
+Settings, rebuild and teardown steps are in
+[`docs/deploy.md`](docs/deploy.md).
+
 ## 🔌 API
 
 | Method | Path | |
@@ -164,13 +187,16 @@ function, `create_player()`, that the seed uses for its development player.
 - **No accounts.** A save belongs to a browser cookie, so clearing cookies
   or switching browsers starts a new guest, and the old save cannot be
   recovered.
-- **Old guests are not cleaned up yet.** Guests unseen for 30 days are meant
-  to be deleted once a month, by a job that comes with the deployment.
-  `last_seen_at` is already updated on every request to a route that needs
-  the cookie.
-- **Not deployed yet.** Runs locally only until the AWS deployment is done.
+- **Guests unseen for 30 days are deleted.** Opening the game moves
+  `last_seen_at` forward; a monthly job removes the rest.
+- **One server, no backups.** The database lives on the demo instance's
+  disk. If the instance has to be replaced, every guest save is lost —
+  accepted for a demo, in exchange for not running a managed database.
+- **Deploys are manual.** CI publishes the image; pulling it onto the
+  server is a command typed in by hand.
 - **No migrations.** `schema.sql` drops and recreates everything, so
-  `npm run db:reset` wipes the save.
+  `npm run db:reset` wipes the save — and on the demo, a schema change
+  means wiping the database volume and every guest with it.
 - **Dungeon clears are self-reported.** The client says whether a run was
   cleared; the server only keeps the clock. Accepted for a portfolio game —
   a leaderboard built on these runs could be cheated.
@@ -180,7 +206,6 @@ function, `create_player()`, that the seed uses for its development player.
 The finish line is fixed in the Definition of Done at the end of
 [`docs/design-backlog.md`](docs/design-backlog.md). What is left on it:
 
-- ☁️ A public deployment on AWS
 - 🏰 One complete dungeon run — tier 1, from entering to clearing, rewards and an upgrade
 - 🏆 Leaderboard
 - 🎨 Sprites for the hero and monsters, and a few sound effects

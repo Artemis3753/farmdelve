@@ -131,8 +131,8 @@ body  none
 > `HttpOnly` so page scripts cannot read it, and a copy in the body would
 > undo that. The cookie is also `SameSite=Lax`, `Path=/`, one year long,
 > and `Secure` only when `NODE_ENV` is `production` (development is plain
-> `http://localhost`). A guest's real lifetime is set by the planned monthly
-> cleanup of guests unseen for 30 days, not by the cookie.
+> `http://localhost`). A guest's real lifetime is set by the monthly cleanup
+> of guests unseen for 30 days (`deploy.md`), not by the cookie.
 >
 > `POST`, not `GET`: link previews and prefetching send `GET`s on their own,
 > and each one would create a player.
@@ -143,8 +143,9 @@ body  none
 >
 > Limited to five per IP address per hour, counted in server memory and
 > counted before the handler runs, so a 200 uses one too. Behind CloudFront
-> every visitor would share CloudFront's addresses until `trust proxy` is
-> set, which is left for the AWS step.
+> every visitor would share CloudFront's addresses, so the deployment sets
+> `TRUST_PROXY_HOPS=1` and Express counts the address CloudFront forwards
+> in `X-Forwarded-For` (`deploy.md`).
 >
 > The new player's starting state comes from the database function
 > `create_player()`, the same one `seed.sql` calls for the development
@@ -338,4 +339,3 @@ and the best tier and nothing else.
   needs. Drop rules are still open.
 - Rewards on the completion response.
 - Accounts and login (`design-backlog.md` §4). Guests stand in for them.
-- The monthly cleanup of guests unseen for 30 days.
