@@ -16,7 +16,9 @@ Last updated: 2026-11-22
 - Three weapon specializations: Scythe (melee), Crossbow (ranged),
   Watering Can (control / debuffs).
 - Stack: React, Node.js/Express, PostgreSQL.
-- Leaderboard ranked by highest dungeon tier cleared.
+- Leaderboard ranked by fastest tier 1 clear (2026-11-26). It was "highest
+  tier cleared" until the scope shrank to tier 1 only, which would tie
+  everyone who clears it.
 - No anti-cheat on the leaderboard — accepted as a known limitation.
   Not a commercial release.
 
@@ -1474,8 +1476,10 @@ nine more tiers would mostly be numbers. Everything cut is listed in §4.
       "try again" with no penalty. Narrowed from tiers 1 through 10 on
       2026-11-22. Today a run can end in defeat but not in a clear, and the
       client does not call the two dungeon endpoints yet.
-- [ ] **Leaderboard** — highest tier cleared. Small, and it is a ranking
-      query on the server rather than more screen work.
+- [ ] **Leaderboard** — fastest tier 1 clear. Small, and it is a ranking
+      query on the server rather than more screen work. The server stamps
+      the start and end times, so the time is its own clock; only "cleared"
+      is self-reported.
 
 **Infrastructure** (added 2026-11-22; see §1 *Infrastructure*)
 
