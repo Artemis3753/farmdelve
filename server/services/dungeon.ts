@@ -10,9 +10,13 @@
 //     제한 시간이 보상만이 아니라 진행의 방벽이기도 하다는 뜻이다.
 //   - 소요 시간과 오버타임 여부는 저장하지 않는다. end_time - start_time으로
 //     나오는 값이라, 저장하면 손으로 맞출 자리가 하나 늘어난다.
+//   - 클리어 보상(2026-11-27)은 티어 표의 값이다. 시간 초과 클리어는 골드 절반(내림)에
+//     문장 없음, 실패는 아무것도 없다. 문장이 깊은 강화의 관문이라 시간을 놓치면 진행을
+//     잃는다는 백로그 규칙이 이 갈림이다.
 
 import pool from '../db/pool.js';
 import { serviceError } from './errors.js';
+import { gainStack } from './stack.js';
 
 // 던전에 들어간다. 진행 중이던 런이 남아 있으면 그것을 실패로 닫고 시작한다.
 //
@@ -127,6 +131,14 @@ export async function completeDungeon(playerId: number, runId: number, cleared: 
   try {
     await client.query('BEGIN');
 
+    // player를 맨 먼저 잠근다(2026-11-27). 보상으로 골드를 바꾸므로 이제 이 트랜잭션은
+    // 언제나 player 행을 고친다. enterDungeon은 player → dungeon_run 순으로 잠그는데, 여기서
+    // 런을 먼저 잡고 player를 나중에 잡으면 같은 플레이어의 입장과 완료가 동시에 들어올 때
+    // 서로 상대가 쥔 행을 기다리는 교착(deadlock)이 생길 수 있다. 8/31에 정한 순서
+    // (player → 나머지)를 두 함수가 똑같이 따르게 한다. 없는 플레이어는 아래 런 조회가
+    // 0행이 되어 404로 끝나므로 여기서 따로 검사하지 않는다.
+    await client.query('SELECT 1 FROM player WHERE player_id = $1 FOR UPDATE', [playerId]);
+
     // 런과 그 티어의 제한 시간을 함께 읽는다. FOR UPDATE OF r 는 조인한 두 표
     // 중 dungeon_run만 잠근다는 뜻이다 — 티어 표는 읽기만 하므로 잠글 이유가 없다.
     //
@@ -140,8 +152,19 @@ export async function completeDungeon(playerId: number, runId: number, cleared: 
     // overtime이 boolean인 이유: 비교식의 결과는 PostgreSQL의 boolean이고, pg는
     // 그걸 JS true/false로 준다. status를 'ongoing' | 'cleared' | 'failed' 목록이
     // 아니라 string으로 둔 건 equip의 slot과 같은 이유다 — CHECK가 지킨다.
-    const run = await client.query<{ status: string; tier: number; overtime: boolean }>(
-      `SELECT r.status, r.tier, now() > r.start_time + t.time_limit overtime
+    //
+    // 보상 세 칸도 같은 줄에서 읽는다. 런이 이미 티어 표와 조인돼 있어서 쿼리를 하나
+    // 더 보낼 이유가 없다.
+    const run = await client.query<{
+      status: string;
+      tier: number;
+      overtime: boolean;
+      reward_gold: number;
+      reward_crest_stack_template_id: number;
+      reward_crest_amount: number;
+    }>(
+      `SELECT r.status, r.tier, now() > r.start_time + t.time_limit overtime,
+              t.reward_gold, t.reward_crest_stack_template_id, t.reward_crest_amount
          FROM dungeon_run r
          JOIN dungeon_tier_template t ON t.tier = r.tier
         WHERE r.dungeon_run_id = $1 AND r.player_id = $2
@@ -161,7 +184,13 @@ export async function completeDungeon(playerId: number, runId: number, cleared: 
       throw serviceError(409, 'run_already_ended', { status: run.rows[0].status });
     }
 
-    const { tier, overtime } = run.rows[0];
+    const {
+      tier,
+      overtime,
+      reward_gold: rewardGold,
+      reward_crest_stack_template_id: crestStackId,
+      reward_crest_amount: rewardCrests,
+    } = run.rows[0];
 
     // 오버타임은 여기에 영향을 주지 않는다. 시간을 넘겨도 클리어는 클리어다 —
     // 백로그의 "Overtime clears still count"가 이 줄이다.
@@ -200,9 +229,41 @@ export async function completeDungeon(playerId: number, runId: number, cleared: 
       highestTierCleared = updated.rows[0].highest_tier_cleared;
     }
 
+    // 보상. 실패는 0, 시간 초과는 골드 절반에 문장 0, 시간 안이면 표의 값 그대로다.
+    // 절반은 내림한다 — 골드는 정수 컬럼이고, 올림하면 시간 초과가 반올림만큼 이득을 본다.
+    const gainedGold = !cleared ? 0 : overtime ? Math.floor(rewardGold / 2) : rewardGold;
+    const gainedCrests = cleared && !overtime ? rewardCrests : 0;
+
+    // 골드는 0을 더해도 같은 UPDATE를 보낸다. 응답에 잔액을 싣기 위해 어차피 읽어야 하고,
+    // "0이면 건너뛰기"를 따로 두면 갈래만 하나 늘어난다. player 행은 함수 맨 앞에서 이미
+    // 잠갔다.
+    const gold = await client.query<{ gold: number }>(
+      `UPDATE player SET gold = gold + $2
+        WHERE player_id = $1
+        RETURNING gold`,
+      [playerId, gainedGold],
+    );
+
+    // 문장은 줄 때만 가방을 건드린다. 0개를 더하면 player_stack의 amount > 0 CHECK에 걸려
+    // 빈 줄이 생기지는 않지만, 없던 줄을 0으로 만들려다 실패하므로 아예 부르지 않는다.
+    // stacks에는 바뀐 줄만 싣는다 — 수확 응답과 같은 약속이다.
+    const stacks =
+      gainedCrests > 0
+        ? [{ stackTemplateId: crestStackId, amount: await gainStack(client, playerId, crestStackId, gainedCrests) }]
+        : [];
+
     await client.query('COMMIT');
 
-    return { status, overtime, highestTierCleared };
+    // 수확 응답과 같은 모양: stacks·gold는 "이제 얼마인가", gained는 "이번에 얼마가
+    // 늘었는가"다. 화면이 두 응답을 같은 코드로 가방과 골드에 반영할 수 있다.
+    return {
+      status,
+      overtime,
+      highestTierCleared,
+      stacks,
+      gold: gold.rows[0].gold,
+      gained: { gold: gainedGold, crests: gainedCrests },
+    };
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
