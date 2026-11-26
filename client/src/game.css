@@ -354,13 +354,26 @@ button.plot:enabled:hover {
   color: #B4402F;
 }
 
-/* 복도. 가로 칸 수는 Dungeon.jsx가 인라인 style로 넘긴다 — 여기 적으면 17이
-   두 파일에 생긴다. 세로 줄 수는 적지 않아도 칸이 17개마다 다음 줄로 넘어간다. */
+/* 복도. 가로 칸 수·칸 크기(48px)·틈은 Dungeon.jsx가 인라인 style로 넘긴다 — 이펙트 canvas도
+   같은 숫자로 크기를 정해서, 여기 적으면 숫자가 두 파일에 생긴다. 세로 줄 수는 적지 않아도 칸이
+   17개마다 다음 줄로 넘어간다. 칸이 고정 크기라 폭 상한(max-width)도 두지 않는다 — 상한이 17칸의
+   폭(848px)보다 좁으면 격자가 넘치고, 넓으면 쓰이지 않는다. */
 .corridor {
   display: grid;
-  gap: 2px;
-  max-width: 720px;
   margin-bottom: 16px;
+}
+
+/* 복도와 이펙트 canvas를 겹치는 틀. canvas가 이 틀의 왼쪽 위(= 복도의 왼쪽 위)에 붙는다. */
+.corridor-frame {
+  position: relative;
+}
+
+/* 이펙트 층. 클릭은 그대로 아래 칸이 받아야 해서 마우스 입력을 통과시킨다. */
+.effect-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
 }
 
 .tile {

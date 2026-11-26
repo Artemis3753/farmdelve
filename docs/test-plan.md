@@ -801,6 +801,14 @@ right corner of the target tile, visible together with the target outline. The b
 no errors or warnings. Not tried by hand: refreshing a bleeding target, a bleed that kills a
 monster, and walking away from a bleeding monster; tests cover them.
 
+Combat effects (2026-11-27, headless Chrome at 1200 × 1000, scale 1): the canvas sits on
+the corridor's top-left corner at 848 × 448, tiles are 48 px, and a real mouse click
+through the canvas still selects a monster. Furious Thrust drew a white flash and 80 on
+the target, Brutal Swing flashed its six tiles and put 40 over both monsters, the player's
+hit showed 10 in red, and a kill left a fading burst while the target moved to the next
+monster. No console errors. Not checked: an effect staying on its tile while the camera
+scrolls, and a high-density display.
+
 ## Not covered yet
 
 - Ranged monsters hold their ground while they can reach the player. Today they chase
@@ -813,5 +821,5 @@ monster, and walking away from a bleeding monster; tests cover them.
 - The elite and ranged mechanics (spin, pools, volley), and the out-of-combat health
   regeneration in the backlog.
 - Run goals: clearing packs, the boss, rewards and the timer.
-- The screen does not read `state.events` yet. Nothing draws effects from them, and the
-  "draw only a higher `seq`" rule lives in the screen code that is not written.
+- The effect layer (`EffectLayer.jsx`) has no automated tests. Its "draw only a higher `seq`"
+  rule and the last-known position of a dead monster were checked only by hand (below).

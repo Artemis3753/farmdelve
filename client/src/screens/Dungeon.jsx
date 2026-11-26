@@ -8,6 +8,7 @@
 
 import { useEffect, useReducer, useState } from 'react'
 import Icon from '../components/Icon.jsx'
+import EffectLayer from '../components/EffectLayer.jsx'
 import {
   combatReducer,
   createInitialState,
@@ -24,6 +25,12 @@ import {
 // 화면에 보이는 가로 칸 수. 플레이어가 가운데 서고 앞뒤로 8칸씩 보인다
 // (백로그 Dungeon space). 홀수여야 "가운데 칸"이 생긴다.
 const VIEW_WIDTH = 17
+
+// 칸 한 변(px)과 칸 사이 틈(px). 그림 팩이 16px이라 정수배(3배)인 48로 고정한다 — 1.5배처럼 정수가
+// 아닌 배율은 픽셀마다 늘어나는 폭이 달라져 그림이 뭉개진다. 복도 격자와 이펙트 canvas가 둘 다 이
+// 값을 쓴다. 한쪽(CSS)에만 적으면 그쪽만 고쳤을 때 이펙트가 칸에서 어긋나므로, 여기 한 곳에 둔다.
+const TILE_SIZE = 48
+const TILE_GAP = 2
 
 const SKILL_SLOTS = [1, 2, 3, 4, 5, 6, 7]
 
@@ -247,15 +254,29 @@ function DungeonRun({ templates, onLeave, onRetry }) {
         </section>
       )}
 
-      <section>
-        {/* 가로 칸 수를 CSS에 적지 않고 여기서 넘긴다. 17이 두 파일에 적히면
-            한쪽만 고쳤을 때 줄이 어긋난다. */}
+      <section className="corridor-frame">
+        {/* 칸 수·칸 크기·틈을 CSS에 적지 않고 여기서 넘긴다. 이 숫자들이 두 파일에 적히면
+            한쪽만 고쳤을 때 줄이 어긋난다. 줄 높이도 칸 크기로 정해서, 아래 canvas와 높이가 맞는다. */}
         <div
           className="corridor"
-          style={{ gridTemplateColumns: `repeat(${VIEW_WIDTH}, 1fr)` }}
+          style={{
+            gridTemplateColumns: `repeat(${VIEW_WIDTH}, ${TILE_SIZE}px)`,
+            gridAutoRows: `${TILE_SIZE}px`,
+            gap: `${TILE_GAP}px`,
+          }}
         >
           {tiles}
         </div>
+        {/* 복도 위에 겹친 이펙트 층. 사건과, 사건이 가리키는 칸을 찾는 데 필요한 것만 넘긴다. */}
+        <EffectLayer
+          events={state.events}
+          monsters={state.monsters}
+          player={state.player}
+          viewLeft={viewLeft}
+          columns={VIEW_WIDTH}
+          tile={TILE_SIZE}
+          gap={TILE_GAP}
+        />
       </section>
 
       <section>
