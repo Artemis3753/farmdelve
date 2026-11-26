@@ -3,7 +3,7 @@
 Working document. Tracks what is decided, what is still open, and what is
 deliberately out of scope. Updated as design sessions go.
 
-Last updated: 2026-11-22
+Last updated: 2026-11-26
 
 ---
 
@@ -16,7 +16,9 @@ Last updated: 2026-11-22
 - Three weapon specializations: Scythe (melee), Crossbow (ranged),
   Watering Can (control / debuffs).
 - Stack: React, Node.js/Express, PostgreSQL.
-- Leaderboard ranked by highest dungeon tier cleared.
+- Leaderboard ranked by fastest tier 1 clear (2026-11-26). It was "highest
+  tier cleared" until the scope shrank to tier 1 only, which would tie
+  everyone who clears it.
 - No anti-cheat on the leaderboard — accepted as a known limitation.
   Not a commercial release.
 
@@ -841,24 +843,118 @@ what was written on 2026-08-25.
   neither exists to configure. Fourteen bindings: 6 rotation, 1 mobility,
   2 consumables, 4 movement, ESC.
 
-### Art and sound assets (2026-11-22)
+### Art and sound assets (2026-11-22, revised 2026-11-26)
 
-- **Images: generated with Google Gemini (Nano Banana), then cleaned up in
-  [Pixel Snapper](https://spritefusion.com/pixel-snapper).** This covers
-  most sprites, monsters included, which closes the open question of where
-  monster art comes from. Pixel Snapper is a free, open-source tool that
-  snaps AI-generated pixel art back onto an even grid and trims its palette;
-  anything it leaves rough gets a hand pass in a pixel editor.
-- **Sound effects: ElevenLabs.**
-- **Why this pipeline:** the 3/4-view mockup (2026-11-19) showed that a hero
-  scaled up from a different source has pixels twice the size of the pixelfx
-  effects, so the two styles clash. A tool that forces one pixel grid aims
-  at exactly that. Whether its output lines up with the effects at our tile
-  size is **not yet tested** — the first monster is the test.
-- **AI-generated art is disclosed in the README.**
-- **Timing:** after the deployment deadline (2026-12-10). Art and sound do
-  not block the infrastructure work.
-- Skill effects stay with pixelfx (see the bleed section above).
+- ~~**Images generated with Google Gemini (Nano Banana) and cleaned up in
+  [Pixel Snapper](https://spritefusion.com/pixel-snapper), monsters
+  included; sound effects from ElevenLabs.**~~ The 2026-11-22 pick, kept for
+  the record. It was chosen because the 3/4-view mockup (2026-11-19) showed
+  a hero from a different source with pixels twice the size of the pixelfx
+  effects, and a tool that forces one pixel grid aims at that.
+- **Revised 2026-11-26** after a solo developer's breakdown of where AI art
+  gives a game away ([LJ_GAMES, 2026-11-24](https://www.youtube.com/watch?v=S9cPt7E0W50)).
+  The rule taken from it: anything that moves is bought, and AI fills in
+  around it. Generated sprites drift between directions, and FarmDelve
+  moves in four. The video speaks for someone shipping commercially; what
+  follows is cut down to this project's size.
+
+The pipeline:
+
+- **Hero and three monsters: one pack** — top-down, four directions,
+  with walk, attack, hit and death. Its palette is the reference everything
+  else is matched to. The look the author wants (bold outlines, small
+  saturated pixel characters) is a filter for picking the pack; the 3/4 view
+  stays.
+- **3D was considered and turned down (2026-11-26).** With a camera looking
+  down at the grid, `rules.js` and its tests would survive, unlike the side
+  view rejected on 2026-11-19. What 3D buys is one model turned to any
+  direction instead of a drawing per direction, and buying a pack already
+  solves that. What it costs is the whole rendering side: a three.js scene,
+  click handling by raycasting instead of the DOM, particles instead of
+  pixelfx, and a pixel UI that no longer matches. That does not fit the
+  weeks left.
+- **Every outside asset must allow a public repository** — CC0, or a license
+  that says so in writing. This repository is public, and committing a
+  pack's files to it can count as redistributing them, which many paid
+  packs forbid. The alternative, keeping paid files out of the repository
+  and fetching them from private storage at deploy, was turned down: a day
+  of infrastructure work, in exchange for a wider choice of style.
+- **UI: a pixel UI kit and a pixel font, applied with CSS `border-image`
+  (9-slice).** A plain CSS interface is the most recognizable sign of an
+  AI-built web game. Redrawing every screen as images is out of scope;
+  skinning the existing panels and buttons changes every screen at once and
+  leaves the React layout alone.
+- **AI-generated: item and crop icons, and floor tiles if the pack has
+  none**, matched to the pack's palette. Several drafts at once, picked by
+  the author, rather than one image revised over and over.
+- **Skill effects: pixelfx** (see the bleed section above) — four skills and
+  the hit, recolored to the pack's palette, since its effects out of the box
+  share one look.
+- **Sound effects: one large pack.** Generated effects rarely match
+  each other in tone; sounds from one pack do. Claude makes a first pass
+  matching pack sounds to combat events, and the author replaces the ones
+  that sound wrong.
+- **Cut:** background music, and building art on the farm and smithy
+  screens.
+- **The README credits each pack and says which parts are AI-generated.**
+- **Timing:** the infrastructure finished on 2026-11-25, so this no longer
+  waits for 2026-12-10.
+
+**The pack: Ninja Adventure (chosen 2026-11-26).**
+[Ninja Adventure](https://pixel-boy.itch.io/ninja-adventure-asset-pack) by
+Pixel-boy and AAA, the 2026-03-29 release. It is free, and the bundled
+`LICENSE.txt` is the full CC0 1.0 text. "Bought" above turned out to be the
+wrong word: what the rule needs is a license that allows a public
+repository, not a price.
+
+- **Why this one.** Packs whose license forbids redistribution were dropped
+  first (Tiny Swords, and most paid packs). The free CC0 candidates left were
+  drawn into the same dungeon scene and compared: Ninja Adventure is the
+  only one with a hero that has walk, attack, hit and death. 0x72's
+  DungeonTileset II has no attack or death and draws characters facing one
+  way only; Kenney's Tiny Dungeon has no animation at all.
+- **One pack covers almost everything.** Characters, monsters, floor tiles,
+  a wood UI theme that can be 9-sliced, life bars, 62 skill icons (each with
+  a greyed-out twin), fonts,
+  and over 100 sound effects (hits, slashes, menu, coins, game-over and
+  success jingles), all in one style. Kenney's CC0 UI and sound packs were
+  the fallback and are not needed. AI is left for whatever icons the pack
+  lacks.
+- **Farm theme.** The dungeon is The Fallow Deep and its monsters are field
+  pests, so the cast is picked to match: the hero is `Villager3` (a plain
+  farmer), Field Rat is `Mouse`, Thresher is `Larva`, Blight Slug is
+  `Slime4`, and Seedspitter is `Bamboo`. The floor is the tilled-soil tile
+  from `TilesetField.png` with a few sprouts and stones from
+  `TilesetFloorDetail.png`, drawn at 70% brightness and 60% saturation so
+  the characters stand out from it. The first floor tried, a stone tile, had
+  small bricks at high contrast and read as noise across the grid.
+- **What the pack does not have, and the fix.** Monsters only walk, so their
+  attack is a short lunge in code, a hit is a white flash, and death is
+  pixelfx's `poof`. The 16-pixel hero has no hit frame either, and gets the
+  same flash. The pack has a sickle only as a 16×16 item icon, so a 9×11
+  in-hand sickle was drawn from that icon's five colors, in the same form as
+  the pack's other in-hand weapons.
+- **Pixel size.** The sprites checked (the 32-pixel-frame ninja, the 16-pixel
+  characters and the monsters) are drawn at the same density, so scaling the
+  whole scene by one integer keeps it consistent. The mockups
+  used 48-pixel cells (16 × 3); the final cell size is set with the canvas
+  work below.
+- **Not decided yet:** where the pack's files live in this repository, and
+  which of them get committed. That comes with the canvas work.
+
+### Drawing sprites on the dungeon grid (2026-11-19)
+
+- **The DOM grid stays, with one transparent canvas laid over it**
+  (`pointer-events: none`). Cells, target selection, borders and range
+  outlines stay in the DOM; the canvas draws only sprites and effects, which
+  lets pixelfx be used as it is. Rejected: sprite sheets as CSS backgrounds
+  (the grid re-renders every 0.1 s, which restarts CSS animations, and large
+  effects do not fit in a cell) and drawing everything on the canvas (click
+  handling rewritten for no gain).
+- **Cells become a fixed whole number of pixels.** Today the corridor is
+  fluid: 720 px across 17 cells with 2 px gaps, about 40.5 px a cell. Pixel
+  art only stays sharp when scaled by a whole number (16 px drawn at ×3 is
+  48 px), so the cell size is set once the pack is chosen.
 
 ### Deployment (2026-08-25, replaced 2026-11-20)
 
@@ -1422,8 +1518,10 @@ nine more tiers would mostly be numbers. Everything cut is listed in §4.
       "try again" with no penalty. Narrowed from tiers 1 through 10 on
       2026-11-22. Today a run can end in defeat but not in a clear, and the
       client does not call the two dungeon endpoints yet.
-- [ ] **Leaderboard** — highest tier cleared. Small, and it is a ranking
-      query on the server rather than more screen work.
+- [ ] **Leaderboard** — fastest tier 1 clear. Small, and it is a ranking
+      query on the server rather than more screen work. The server stamps
+      the start and end times, so the time is its own clock; only "cleared"
+      is self-reported.
 
 **Infrastructure** (added 2026-11-22; see §1 *Infrastructure*)
 
@@ -1435,10 +1533,17 @@ nine more tiers would mostly be numbers. Everything cut is listed in §4.
 
 **Finish** (art and playtesting added 2026-11-22)
 
-- [ ] **Minimum art and sound** — a hero and the monsters through the
-      pipeline in §1 *Art and sound assets*, plus a few sound effects. Today
-      the screens are icons only, and that is the first thing an
-      interviewer sees. After 2026-12-10.
+- [ ] **Minimum art and sound** — today the screens are icons and plain
+      CSS, and that is the first thing an interviewer sees. Split into
+      parts on 2026-11-26; the pipeline is in §1 *Art and sound assets*,
+      the rendering in §1 *Drawing sprites on the dungeon grid*.
+  - [ ] A canvas over the dungeon grid, with cells at a fixed pixel size
+  - [ ] The hero and three monsters from one pack (Ninja Adventure, CC0)
+  - [ ] A pixel UI kit and font across every screen
+  - [ ] Icons, generated to match the pack
+  - [ ] Four skill effects and the hit, from pixelfx
+  - [ ] Sound effects from the same pack, matched to combat events
+  - [ ] Pack credits and an AI disclosure in the README
 - [ ] **Playtested** — the public URL played by three to five people
       (friends, family), and what they reported written down along with
       what changed because of it.

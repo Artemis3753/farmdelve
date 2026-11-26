@@ -15,3 +15,14 @@ easier to justify than a number invented from a blank page.
 
 **The goal is not to copy.** Learn why they did it that way, then decide what to cut
 to fit this project's size.
+
+## UI text
+
+The screen is not a spec. Show short labels and numbers, not sentences that explain
+the rules.
+
+- Good: `Rage 3/5`, `Try again`. Bad: "Press 1 to use Furious Thrust, which builds rage."
+- Explanations of how a rule works belong in `docs/design-backlog.md` or the README.
+
+**Why:** sentence-style instructions on screen are one of the clearest signs that a
+web game was written by an AI, and they go stale every time a rule changes.
