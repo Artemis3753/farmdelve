@@ -3,7 +3,7 @@
 Working document. Tracks what is decided, what is still open, and what is
 deliberately out of scope. Updated as design sessions go.
 
-Last updated: 2026-11-22
+Last updated: 2026-11-26
 
 ---
 
@@ -860,7 +860,7 @@ what was written on 2026-08-25.
 
 The pipeline:
 
-- **Hero and three monsters: one bought pack** — top-down, four directions,
+- **Hero and three monsters: one pack** — top-down, four directions,
   with walk, attack, hit and death. Its palette is the reference everything
   else is matched to. The look the author wants (bold outlines, small
   saturated pixel characters) is a filter for picking the pack; the 3/4 view
@@ -873,7 +873,7 @@ The pipeline:
   click handling by raycasting instead of the DOM, particles instead of
   pixelfx, and a pixel UI that no longer matches. That does not fit the
   weeks left.
-- **Every bought asset must allow a public repository** — CC0, or a license
+- **Every outside asset must allow a public repository** — CC0, or a license
   that says so in writing. This repository is public, and committing a
   pack's files to it can count as redistributing them, which many paid
   packs forbid. The alternative, keeping paid files out of the repository
@@ -890,7 +890,7 @@ The pipeline:
 - **Skill effects: pixelfx** (see the bleed section above) — four skills and
   the hit, recolored to the pack's palette, since its effects out of the box
   share one look.
-- **Sound effects: one large bought pack.** Generated effects rarely match
+- **Sound effects: one large pack.** Generated effects rarely match
   each other in tone; sounds from one pack do. Claude makes a first pass
   matching pack sounds to combat events, and the author replaces the ones
   that sound wrong.
@@ -899,6 +899,48 @@ The pipeline:
 - **The README credits each pack and says which parts are AI-generated.**
 - **Timing:** the infrastructure finished on 2026-11-25, so this no longer
   waits for 2026-12-10.
+
+**The pack: Ninja Adventure (chosen 2026-11-26).**
+[Ninja Adventure](https://pixel-boy.itch.io/ninja-adventure-asset-pack) by
+Pixel-boy and AAA, the 2026-03-29 release. It is free, and the bundled
+`LICENSE.txt` is the full CC0 1.0 text. "Bought" above turned out to be the
+wrong word: what the rule needs is a license that allows a public
+repository, not a price.
+
+- **Why this one.** Packs whose license forbids redistribution were dropped
+  first (Tiny Swords, and most paid packs). The free CC0 candidates left were
+  drawn into the same dungeon scene and compared: Ninja Adventure is the
+  only one with a hero that has walk, attack, hit and death. 0x72's
+  DungeonTileset II has no attack or death and draws characters facing one
+  way only; Kenney's Tiny Dungeon has no animation at all.
+- **One pack covers almost everything.** Characters, monsters, floor tiles,
+  a wood UI theme that can be 9-sliced, life bars, 62 skill icons (each with
+  a greyed-out twin), fonts,
+  and over 100 sound effects (hits, slashes, menu, coins, game-over and
+  success jingles), all in one style. Kenney's CC0 UI and sound packs were
+  the fallback and are not needed. AI is left for whatever icons the pack
+  lacks.
+- **Farm theme.** The dungeon is The Fallow Deep and its monsters are field
+  pests, so the cast is picked to match: the hero is `Villager3` (a plain
+  farmer), Field Rat is `Mouse`, Thresher is `Larva`, Blight Slug is
+  `Slime4`, and Seedspitter is `Bamboo`. The floor is the tilled-soil tile
+  from `TilesetField.png` with a few sprouts and stones from
+  `TilesetFloorDetail.png`, drawn at 70% brightness and 60% saturation so
+  the characters stand out from it. The first floor tried, a stone tile, had
+  small bricks at high contrast and read as noise across the grid.
+- **What the pack does not have, and the fix.** Monsters only walk, so their
+  attack is a short lunge in code, a hit is a white flash, and death is
+  pixelfx's `poof`. The 16-pixel hero has no hit frame either, and gets the
+  same flash. The pack has a sickle only as a 16×16 item icon, so a 9×11
+  in-hand sickle was drawn from that icon's five colors, in the same form as
+  the pack's other in-hand weapons.
+- **Pixel size.** The sprites checked (the 32-pixel-frame ninja, the 16-pixel
+  characters and the monsters) are drawn at the same density, so scaling the
+  whole scene by one integer keeps it consistent. The mockups
+  used 48-pixel cells (16 × 3); the final cell size is set with the canvas
+  work below.
+- **Not decided yet:** where the pack's files live in this repository, and
+  which of them get committed. That comes with the canvas work.
 
 ### Drawing sprites on the dungeon grid (2026-11-19)
 
@@ -1496,11 +1538,11 @@ nine more tiers would mostly be numbers. Everything cut is listed in §4.
       parts on 2026-11-26; the pipeline is in §1 *Art and sound assets*,
       the rendering in §1 *Drawing sprites on the dungeon grid*.
   - [ ] A canvas over the dungeon grid, with cells at a fixed pixel size
-  - [ ] The hero and three monsters from one bought pack
+  - [ ] The hero and three monsters from one pack (Ninja Adventure, CC0)
   - [ ] A pixel UI kit and font across every screen
   - [ ] Icons, generated to match the pack
   - [ ] Four skill effects and the hit, from pixelfx
-  - [ ] Sound effects from one bought pack, matched to combat events
+  - [ ] Sound effects from the same pack, matched to combat events
   - [ ] Pack credits and an AI disclosure in the README
 - [ ] **Playtested** — the public URL played by three to five people
       (friends, family), and what they reported written down along with
