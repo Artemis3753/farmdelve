@@ -279,6 +279,13 @@ Last updated: 2026-11-26
 - Clear rewards: gold, plus tiered upgrade materials called **crests**
   (three tiers), modeled on WoW's heroic/mythic crests. Higher crest tiers
   drop only at higher dungeon tiers, which is what gates deep upgrading.
+- **Clear reward amounts (2026-11-27, provisional):** an in-time tier 1 clear
+  pays **100 gold and 5 Seed Crests**. Five crests take one item from +0 to
+  +2 (1 + 2) with two left over, and 100 gold is well above a wheat plot (8
+  per 20 minutes), keeping the dungeon the main gold source. The values live
+  in `dungeon_tier_template` next to the time limit, because the crest tier
+  steps on the same bands. Tiers 2–10 carry the same placeholder numbers;
+  they are outside the DoD. Half of an odd gold reward rounds down.
 - **Overtime clears still count**, but pay **50% of the currency and no
   crests at all.** Crests are the deep-upgrade gate, so missing the timer
   costs progression rather than the run itself.
@@ -1516,8 +1523,9 @@ nine more tiers would mostly be numbers. Everything cut is listed in §4.
 - [ ] **A complete dungeon loop, tier 1 only** — enter -> fight -> clear ->
       rewards (gold and crests) -> spend them on an upgrade. Death shows
       "try again" with no penalty. Narrowed from tiers 1 through 10 on
-      2026-11-22. Today a run can end in defeat but not in a clear, and the
-      client does not call the two dungeon endpoints yet.
+      2026-11-22. The server pays the clear reward since 2026-11-27. Today a
+      run can still end in defeat but not in a clear, and the client does not
+      call the two dungeon endpoints yet.
 - [ ] **Leaderboard** — fastest tier 1 clear. Small, and it is a ranking
       query on the server rather than more screen work. The server stamps
       the start and end times, so the time is its own clock; only "cleared"

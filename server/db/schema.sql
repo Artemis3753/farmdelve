@@ -280,7 +280,17 @@ CREATE TABLE dungeon_tier_template (
   -- 이유이고, 덕분에 end_time - start_time 과 바로 비교할 수 있다.
   -- 밴드는 백로그 §1 Dungeon loop and rewards가 정했다 — 1~4는 5분, 5~8은
   -- 10분, 9~10은 15분.
-  time_limit INTERVAL NOT NULL CHECK (time_limit > INTERVAL '0 seconds')
+  time_limit INTERVAL NOT NULL CHECK (time_limit > INTERVAL '0 seconds'),
+
+  -- 시간 안에 클리어했을 때의 보상(2026-11-27). 시간 초과 클리어는 골드 절반·문장 없음이고,
+  -- 그 규칙은 dungeon.ts가 이 값에서 계산한다 — 비율은 식이라 컬럼이 아니다.
+  --
+  -- 제한 시간과 같은 이유로 데이터다. 문장 등급이 계단(1~4 Seed, 5~8 Sprout, 9~10 Harvest)이고,
+  -- 그 계단이 제한 시간의 계단과 정확히 겹친다. 문장을 이름이 아니라 FK로 가리키는 것은
+  -- upgrade 표가 강화 재료를 가리키는 방식과 같다.
+  reward_gold INTEGER NOT NULL CHECK (reward_gold >= 0),
+  reward_crest_stack_template_id INTEGER NOT NULL REFERENCES stack_template,
+  reward_crest_amount INTEGER NOT NULL CHECK (reward_crest_amount > 0)
 
 );
 

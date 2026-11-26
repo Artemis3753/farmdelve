@@ -138,7 +138,7 @@ INSERT INTO dungeon_template (name)
 VALUES ('The Fallow Deep');
 
 
--- 7. 티어 10단의 제한 시간. 백로그 §1 Dungeon loop and rewards가 밴드로
+-- 7. 티어 10단의 제한 시간과 클리어 보상. 백로그 §1 Dungeon loop and rewards가 밴드로
 --     정해놨다 — 1~4는 5분, 5~8은 10분, 9~10은 15분.
 --
 --     오늘 아침에 "배율은 표에 안 넣는다"고 정했는데 제한 시간은 표에 넣는 것이
@@ -151,11 +151,26 @@ VALUES ('The Fallow Deep');
 --
 --     한 줄에 한 밴드씩 묶어 적는다. 티어 순서대로 열 줄을 세우는 것보다
 --     계단이 어디서 꺾이는지가 눈에 먼저 들어온다.
-INSERT INTO dungeon_tier_template (tier, time_limit)
-VALUES
-  ( 1, INTERVAL '5 minutes'), ( 2, INTERVAL '5 minutes'), ( 3, INTERVAL '5 minutes'), ( 4, INTERVAL '5 minutes'),
-  ( 5, INTERVAL '10 minutes'), ( 6, INTERVAL '10 minutes'), ( 7, INTERVAL '10 minutes'), ( 8, INTERVAL '10 minutes'),
-  ( 9, INTERVAL '15 minutes'), (10, INTERVAL '15 minutes');
+--
+--     클리어 보상(2026-11-27)도 같은 줄에 적는다. 문장 등급은 제한 시간과 같은 밴드를
+--     따른다(1~4 Seed, 5~8 Sprout, 9~10 Harvest). 골드 100·문장 5는 1티어용 잠정값이고,
+--     만들지 않는 2~10티어(DoD 밖)에도 NOT NULL이라 같은 값을 채워 둔다. 1티어 기준으로는
+--     첫 클리어로 장비 하나를 +2까지(문장 1 + 2) 올리고 2개가 남는다. 골드는 밀 한 칸(20분에
+--     8)보다 확실히 많아서 던전이 주 수입원이라는 백로그 규칙을 지킨다.
+--
+--     문장 번호는 이름으로 찾는다. 3번 블록(강화 비용표)이 문장을 찾는 방식과 같다.
+INSERT INTO dungeon_tier_template
+  (tier, time_limit, reward_gold, reward_crest_stack_template_id, reward_crest_amount)
+SELECT v.tier, v.time_limit, 100,
+       (SELECT stack_template_id FROM stack_template WHERE name = v.crest_name),
+       5
+FROM (VALUES
+  ( 1, INTERVAL '5 minutes', 'Seed Crest'), ( 2, INTERVAL '5 minutes', 'Seed Crest'),
+  ( 3, INTERVAL '5 minutes', 'Seed Crest'), ( 4, INTERVAL '5 minutes', 'Seed Crest'),
+  ( 5, INTERVAL '10 minutes', 'Sprout Crest'), ( 6, INTERVAL '10 minutes', 'Sprout Crest'),
+  ( 7, INTERVAL '10 minutes', 'Sprout Crest'), ( 8, INTERVAL '10 minutes', 'Sprout Crest'),
+  ( 9, INTERVAL '15 minutes', 'Harvest Crest'), (10, INTERVAL '15 minutes', 'Harvest Crest')
+) AS v(tier, time_limit, crest_name);
 
 
 -- 8. 트래시 몬스터 넷의 티어1 값. 수치는 백로그 §1 Tier-1 numbers에서 왔고, 전투
