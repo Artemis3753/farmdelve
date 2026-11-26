@@ -215,6 +215,23 @@ export function createInitialState(monsters, packs) {
     monsters: placed,
     heldDirection: null,
     nextMoveTick: 0,
+    // 이번 틱에 일어난 전투 사건(누가 누구를 무엇으로 맞혔나·죽었나). state는 "지금 모습"만 담아서
+    // 화면이 이펙트를 고를 수 없기 때문에 따로 적는다(WoW 전투 로그와 같은 생각). 틱이 시작될 때만
+    // 비운다 — 키 입력으로 나간 스킬 사건이 화면이 그리기 전에 지워지지 않게 하려는 것이다.
+    events: [],
+    // 다음 사건에 붙일 일련번호. 비워도 0으로 돌아가지 않아서, 화면은 "마지막으로 그린 번호"보다
+    // 큰 사건만 그리면 같은 사건을 두 번 그리지 않는다.
+    nextEventSeq: 0,
+  };
+}
+
+
+// 사건 하나를 이번 틱 목록 끝에 붙이고 번호를 하나 올린다. 받은 배열을 고치지 않고 새로 만든다.
+function record(state, event) {
+  return {
+    ...state,
+    events: [...state.events, { seq: state.nextEventSeq, ...event }],
+    nextEventSeq: state.nextEventSeq + 1,
   };
 }
 
@@ -347,8 +364,17 @@ function attackStep(state) {
   const playerHp = Math.max(0, state.playerHp - damage);
   const swingingIds = new Set(swinging.map((m) => m.id));
 
+  // 체력은 합쳐서 한 번에 깎지만, 사건은 누가 때렸는지 보이게 한 마리씩 남긴다.
+  let next = state;
+  for (const m of swinging) {
+    next = record(next, {
+      type: 'damage', source: m.id, target: 'player', ability: 'autoAttack', amount: m.attackDamage,
+    });
+  }
+  if (playerHp === 0) next = record(next, { type: 'death', target: 'player' });
+
   return {
-    ...state,
+    ...next,
     playerHp,
     defeated: playerHp === 0,
     monsters: state.monsters.map((m) =>
@@ -377,22 +403,25 @@ function nearestAggroedId(monsters, player) {
 // 대상에게 피해를 준다(자동공격과 스킬이 같이 쓴다). 방어력만큼 줄이고 정수로 반올림한다 —
 // 백로그: 피해는 십 단위라 소수가 남으면 안 된다. hp가 0 이하면 몬스터를 지우고, 어그로 붙은
 // 가장 가까운 몬스터를 새 대상으로 잡는다(없으면 대상 없음).
-function hitTarget(state, target, rawDamage) {
-  return retargetIfLost(damageMonster(state, target, rawDamage));
+function hitTarget(state, target, rawDamage, ability) {
+  return retargetIfLost(damageMonster(state, target, rawDamage, ability));
 }
 
 // 몬스터 하나에게 피해를 준다: 방어력만큼 줄여 반올림하고, hp가 0 이하면 지운다. 대상은 건드리지
 // 않는다 — 여러 명을 맞히는 스킬은 다 맞힌 뒤에 한 번만 대상을 정리한다(retargetIfLost).
-function damageMonster(state, monster, rawDamage) {
+// ability는 사건에 적을 이름이다('autoAttack' 또는 SKILLS의 키). 사건의 amount는 방어력을 뺀 값이고,
+// 남은 hp를 넘는 초과 피해는 따로 적지 않는다 — 읽을 곳이 없다.
+function damageMonster(state, monster, rawDamage, ability) {
   const damage = Math.round(rawDamage * (1 - monster.armor / (monster.armor + ARMOR_K)));
   const hp = monster.hp - damage;
 
+  const hit = record(state, { type: 'damage', source: 'player', target: monster.id, ability, amount: damage });
+  if (hp > 0) {
+    return { ...hit, monsters: state.monsters.map((m) => (m.id === monster.id ? { ...m, hp } : m)) };
+  }
   return {
-    ...state,
-    monsters:
-      hp > 0
-        ? state.monsters.map((m) => (m.id === monster.id ? { ...m, hp } : m))
-        : state.monsters.filter((m) => m.id !== monster.id),
+    ...record(hit, { type: 'death', target: monster.id }),
+    monsters: state.monsters.filter((m) => m.id !== monster.id),
   };
 }
 
@@ -420,7 +449,7 @@ function playerAttackStep(state) {
   if (state.tick < state.nextPlayerAttackTick) return state;
 
   return {
-    ...hitTarget(state, target, PLAYER_ATTACK_POWER * AUTO_ATTACK_COEFFICIENT),
+    ...hitTarget(state, target, PLAYER_ATTACK_POWER * AUTO_ATTACK_COEFFICIENT, 'autoAttack'),
     nextPlayerAttackTick: state.tick + PLAYER_ATTACK_TICKS,
   };
 }
@@ -433,8 +462,8 @@ function playerAttackStep(state) {
 function castSkill(state, skillId) {
   const skill = SKILLS[skillId];
   if (!skill) return state;
-  if (skill.area) return castAreaSkill(state, skill);
-  if (skill.channel) return castChannelSkill(state);
+  if (skill.area) return castAreaSkill(state, skill, skillId);
+  if (skill.channel) return castChannelSkill(state, skillId);
 
   const target = state.monsters.find((m) => m.id === state.targetId);
   if (!target) return state;
@@ -448,8 +477,11 @@ function castSkill(state, skillId) {
     ? state.rage - points * RAGE_PER_POINT
     : Math.min(RAGE_MAX, state.rage + skill.rageGain);
 
+  // 나가는 것이 확정된 뒤에만 cast를 적는다. 못 나간 스킬은 위에서 상태를 그대로 돌려줘서 사건이 없다.
+  const cast = record(state, { type: 'cast', source: 'player', ability: skillId });
+
   return {
-    ...hitTarget(state, target, rawDamage),
+    ...hitTarget(cast, target, rawDamage, skillId),
     rage,
     gcdReadyTick: state.tick + GCD_TICKS,
   };
@@ -487,11 +519,12 @@ function swingTargets(state) {
 
 // 광역 스킬을 쓴다. 대상 선택도 사거리 검사도 없다(범위가 곧 사거리): 아무도 못 맞혀도 발동하고
 // GCD를 쓴다(헛스윙). 맞힌 한 명마다 분노를 쌓는다. 죽인 몬스터도 맞힌 수에 센다.
-function castAreaSkill(state, skill) {
+// 헛스윙도 cast는 남긴다 — 아무도 안 맞아도 휘두르는 이펙트는 그려야 하기 때문이다(WoW의 SPELL_CAST_SUCCESS).
+function castAreaSkill(state, skill, skillId) {
   const hit = swingTargets(state);
 
-  let next = state;
-  for (const monster of hit) next = damageMonster(next, monster, skill.damage);
+  let next = record(state, { type: 'cast', source: 'player', ability: skillId });
+  for (const monster of hit) next = damageMonster(next, monster, skill.damage, skillId);
 
   return {
     ...retargetIfLost(next),
@@ -505,12 +538,12 @@ function castAreaSkill(state, skill) {
 // 정수 포인트를 전부 쓰고(1c 미만이면 못 쓴다), GCD는 채널이 끝날 때까지 잡힌다 — 1c는 0.7초지만
 // GCD가 1초라서 1초다. 채널 중에 다른 스킬을 못 누르는 것도 이 GCD에서 따라 나오고, 끝나기 3틱
 // 안에 누른 입력은 기억했다가 마지막 틱 뒤에 나간다.
-function castChannelSkill(state) {
+function castChannelSkill(state, skillId) {
   const points = Math.floor(state.rage / RAGE_PER_POINT);
   if (points < 1) return state;
 
   return {
-    ...state,
+    ...record(state, { type: 'cast', source: 'player', ability: skillId }),
     monsters: applyBleed(state, points),
     rage: state.rage - points * RAGE_PER_POINT,
     channel: {
@@ -552,6 +585,8 @@ function applyBleed(state, points) {
 function bleedStep(state) {
   if (state.defeated || !state.monsters.some((m) => m.bleed)) return state;
 
+  // 출혈은 방어력을 무시해서 damageMonster를 쓰지 않는다. 그래서 사건도 여기서 직접 적는다.
+  let next = state;
   const monsters = [];
   for (const m of state.monsters) {
     if (!m.bleed) {
@@ -562,7 +597,15 @@ function bleedStep(state) {
     const { endTick, nextTickTick } = m.bleed;
     const ticks = state.tick >= nextTickTick;
     const hp = ticks ? m.hp - BLEED_TICK_DAMAGE : m.hp;
-    if (hp <= 0) continue;
+    if (ticks) {
+      next = record(next, {
+        type: 'damage', source: 'player', target: m.id, ability: 'bleed', amount: BLEED_TICK_DAMAGE,
+      });
+    }
+    if (hp <= 0) {
+      next = record(next, { type: 'death', target: m.id });
+      continue;
+    }
 
     const bleed =
       state.tick >= endTick
@@ -571,7 +614,7 @@ function bleedStep(state) {
     monsters.push({ ...m, hp, bleed });
   }
 
-  return retargetIfLost({ ...state, monsters });
+  return retargetIfLost({ ...next, monsters });
 }
 
 
@@ -585,7 +628,7 @@ function channelStep(state) {
 
   const inRange = state.monsters.filter((m) => distanceBetween(m, state.player) <= MELEE_RANGE);
   let next = state;
-  for (const monster of inRange) next = damageMonster(next, monster, SPIN_TICK_DAMAGE);
+  for (const monster of inRange) next = damageMonster(next, monster, SPIN_TICK_DAMAGE, 'whirlingSlash');
   next = retargetIfLost(next);
 
   const connected = channel.connected || inRange.length > 0;
@@ -600,13 +643,17 @@ function channelStep(state) {
     };
   }
 
-  return {
-    ...next,
-    channel: null,
-    playerHp: connected
-      ? Math.min(state.playerMaxHp, state.playerHp + SPIN_COMPLETION_HEAL)
-      : state.playerHp,
-  };
+  // 회복 사건은 실제로 오른 양을 적고, 0이면(못 맞혔거나 체력이 꽉 참) 적지 않는다 — 화면에 "+0"을
+  // 띄울 이유가 없다.
+  const playerHp = connected
+    ? Math.min(state.playerMaxHp, state.playerHp + SPIN_COMPLETION_HEAL)
+    : state.playerHp;
+  const healed = playerHp - state.playerHp;
+  const done = { ...next, channel: null, playerHp };
+  if (healed === 0) return done;
+  return record(done, {
+    type: 'heal', source: 'player', target: 'player', ability: 'whirlingSlash', amount: healed,
+  });
 }
 
 
@@ -645,8 +692,9 @@ export function combatReducer(state, action) {
   switch (action.type) {
     // 시간이 한 틱 흐르고, 플레이어는 걸음 간격이 지났으면 한 걸음 간다. 그 뒤에
     // 몬스터 쪽이 움직인다(플레이어가 먼저, 몬스터가 나중).
+    // 지난 틱(과 그 뒤 키 입력)의 사건은 여기서 비운다. 틱 말고 다른 액션에서는 비우지 않는다.
     case 'tick':
-      return advanceCombat(stepIfReady({ ...state, tick: state.tick + 1 }));
+      return advanceCombat(stepIfReady({ ...state, tick: state.tick + 1, events: [] }));
 
     // 나중에 누른 방향이 이긴다. 오른쪽을 누른 채 위를 누르면 위로 간다.
     // 누른 순간 걸음 간격이 지나 있으면 틱을 기다리지 않고 바로 한 걸음 간다.

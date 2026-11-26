@@ -1629,3 +1629,180 @@ describe('combatReducer — Whirling Slash bleed (seam H)', () => {
     expect(runTicks(dead, 30).monsters[0].hp).toBe(1000)
   })
 })
+
+
+// 시임 I: 전투 사건 기록(state.events). 화면이 "이번 틱에 누가 무엇으로 맞았나·죽었나"를 읽어 이펙트를
+// 그리려는 것이다. 사건 모양은 WoW 전투 로그처럼 공통 칸(type, source, target, ability, amount)이고,
+// 틱이 시작될 때만 비우며 seq는 전투 내내 올라간다(2026-11-26 J 결정).
+//
+// 대부분의 케이스는 seq를 떼고 비교한다(eventsOf). seq 규칙은 I2가 따로 본다.
+const eventsOf = (state) =>
+  state.events.map((event) => {
+    const rest = { ...event }
+    delete rest.seq
+    return rest
+  })
+const castSwing = (state) => combatReducer(state, { type: 'useSkill', skill: 'brutalSwing' })
+
+describe('combatReducer — combat events (seam I)', () => {
+  test('I1: a new fight starts with no events and the sequence at 0', () => {
+    const state = createInitialState(MONSTERS, [{ packNumber: 1, monsterTemplateId: 1, amount: 1 }])
+
+    expect(state.events).toEqual([])
+    expect(state.nextEventSeq).toBe(0)
+  })
+
+  test('I2: a tick clears the last events, while seq keeps counting up and never restarts', () => {
+    // 자동공격이 틱 1에 나가고 다음은 틱 21이다(20틱 간격).
+    const state = { ...swingWith([{ x: 6, y: 4 }], { targetId: 0 }), nextPlayerAttackTick: 1 }
+
+    const first = runTicks(state, 1)
+    expect(first.events.map((e) => e.seq)).toEqual([0])
+    expect(first.nextEventSeq).toBe(1)
+
+    // 다음 틱에는 아무 일도 없어서 목록이 비지만, 번호는 그대로다.
+    const quiet = runTicks(state, 2)
+    expect(quiet.events).toEqual([])
+    expect(quiet.nextEventSeq).toBe(1)
+
+    // 두 번째 자동공격은 0이 아니라 1번이다.
+    expect(runTicks(state, 21).events.map((e) => e.seq)).toEqual([1])
+  })
+
+  test('I3: an auto-attack records the damage left after armor', () => {
+    // 방어력 250: 40 × (1 − 250 / 1250) = 32.
+    const state = { ...swingWith([{ x: 6, y: 4, armor: 250 }], { targetId: 0 }), nextPlayerAttackTick: 1 }
+
+    expect(eventsOf(runTicks(state, 1))).toEqual([
+      { type: 'damage', source: 'player', target: 0, ability: 'autoAttack', amount: 32 },
+    ])
+  })
+
+  test('I4: two monsters hitting on the same tick record one event each, in id order', () => {
+    // 체력에서는 합쳐서 20이 빠지지만, 사건은 누가 때렸는지 알 수 있게 한 마리씩 나눈다.
+    const state = swingWith([
+      { x: 6, y: 4, nextAttackTick: 1 },
+      { x: 6, y: 3, nextAttackTick: 1 },
+    ])
+    const after = runTicks(state, 1)
+
+    expect(after.playerHp).toBe(980)
+    expect(eventsOf(after)).toEqual([
+      { type: 'damage', source: 0, target: 'player', ability: 'autoAttack', amount: 10 },
+      { type: 'damage', source: 1, target: 'player', ability: 'autoAttack', amount: 10 },
+    ])
+  })
+
+  test('I5: a skill pressed between ticks records cast then damage, which stay until the next tick', () => {
+    const cast = castFurious(swingWith([{ x: 6, y: 4 }], { targetId: 0 }))
+
+    expect(cast.events).toEqual([
+      { seq: 0, type: 'cast', source: 'player', ability: 'furiousThrust' },
+      { seq: 1, type: 'damage', source: 'player', target: 0, ability: 'furiousThrust', amount: 80 },
+    ])
+
+    // 틱이 아닌 다른 입력(걷기 시작)으로는 비지 않는다. 화면이 그리기 전에 지워지면 안 되기 때문이다.
+    const walked = combatReducer(cast, { type: 'moveStart', direction: 'up' })
+    expect(walked.events).toEqual(cast.events)
+
+    expect(runTicks(cast, 1).events).toEqual([])
+  })
+
+  test('I6: a Brutal Swing that hits no one records only the cast, and a skill that cannot go records nothing', () => {
+    expect(eventsOf(castSwing(swingWith([])))).toEqual([
+      { type: 'cast', source: 'player', ability: 'brutalSwing' },
+    ])
+
+    // 대상 없음, 사거리 밖, 분노 부족: 상태가 그대로라 사건도 없다.
+    const noTarget = swingWith([{ x: 6, y: 4 }])
+    expect(castFurious(noTarget)).toEqual(noTarget)
+    const farAway = swingWith([{ x: 9, y: 4 }], { targetId: 0 })
+    expect(castFurious(farAway)).toEqual(farAway)
+    const noRage = spinWith([{ x: 6, y: 4 }], { rage: 0 })
+    expect(castSpin(noRage)).toEqual(noRage)
+  })
+
+  test('I7: Brutal Swing and each Whirling Slash tick record one damage event per enemy hit', () => {
+    expect(eventsOf(castSwing(swingWith([{ x: 6, y: 4 }, { x: 6, y: 5 }])))).toEqual([
+      { type: 'cast', source: 'player', ability: 'brutalSwing' },
+      { type: 'damage', source: 'player', target: 0, ability: 'brutalSwing', amount: 40 },
+      { type: 'damage', source: 'player', target: 1, ability: 'brutalSwing', amount: 40 },
+    ])
+
+    // 1c 채널: 누를 때는 cast만, 틱 7에 범위 안의 두 명이 한 번씩 맞는다. 체력이 꽉 차 있어서 회복
+    // 사건은 없다(I10).
+    const spin = castSpin(spinWith([{ x: 6, y: 4 }, { x: 4, y: 4 }], { rage: 10 }))
+    expect(eventsOf(spin)).toEqual([{ type: 'cast', source: 'player', ability: 'whirlingSlash' }])
+    expect(eventsOf(runTicks(spin, 7))).toEqual([
+      { type: 'damage', source: 'player', target: 0, ability: 'whirlingSlash', amount: 40 },
+      { type: 'damage', source: 'player', target: 1, ability: 'whirlingSlash', amount: 40 },
+    ])
+  })
+
+  test('I8: a bleed tick records damage from the player with the ability bleed, ignoring armor', () => {
+    // 방어력 250: 채널 틱(틱 7)은 32, 출혈 틱(틱 20)은 방어력을 무시해 50 그대로다.
+    const cast = castBleed([{ x: 6, y: 4, armor: 250 }], 10)
+
+    expect(eventsOf(runTicks(cast, 7))).toEqual([
+      { type: 'damage', source: 'player', target: 0, ability: 'whirlingSlash', amount: 32 },
+    ])
+    expect(eventsOf(runTicks(cast, 20))).toEqual([
+      { type: 'damage', source: 'player', target: 0, ability: 'bleed', amount: 50 },
+    ])
+  })
+
+  test('I9: a kill records death right after the damage, whether by a hit or by a bleed', () => {
+    // hp 50에 80이 들어가도 amount는 80이다(남은 hp를 넘는 초과 피해는 따로 적지 않는다).
+    expect(eventsOf(castFurious(swingWith([{ x: 6, y: 4, hp: 50 }], { targetId: 0 })))).toEqual([
+      { type: 'cast', source: 'player', ability: 'furiousThrust' },
+      { type: 'damage', source: 'player', target: 0, ability: 'furiousThrust', amount: 80 },
+      { type: 'death', target: 0 },
+    ])
+
+    // H10과 같은 배치: 채널 틱(7)에 hp 50이 되고 출혈 틱(20)에 죽는다.
+    const bled = castBleed([{ x: 6, y: 4, hp: 90 }, { x: 6, y: 3 }], 10)
+    expect(eventsOf(runTicks(bled, 20))).toEqual([
+      { type: 'damage', source: 'player', target: 0, ability: 'bleed', amount: 50 },
+      { type: 'death', target: 0 },
+    ])
+  })
+
+  test('I10: the Whirling Slash heal records the amount actually restored, and nothing at full health', () => {
+    const hurt = (hp) => castSpin({ ...spinWith([{ x: 6, y: 4 }], { rage: 10 }), playerHp: hp })
+    const healOf = (state) => eventsOf(state).filter((e) => e.type === 'heal')
+
+    // 1c 채널은 틱 7에 맞히고 바로 끝난다. 회복 사건은 그 틱의 피해 사건 뒤에 온다.
+    expect(eventsOf(runTicks(hurt(500), 7))).toEqual([
+      { type: 'damage', source: 'player', target: 0, ability: 'whirlingSlash', amount: 40 },
+      { type: 'heal', source: 'player', target: 'player', ability: 'whirlingSlash', amount: 20 },
+    ])
+    // 990에서는 최대 체력까지 10만 오른다.
+    expect(healOf(runTicks(hurt(990), 7))).toEqual([
+      { type: 'heal', source: 'player', target: 'player', ability: 'whirlingSlash', amount: 10 },
+    ])
+    expect(healOf(runTicks(hurt(1000), 7))).toEqual([])
+  })
+
+  test('I11: a player killed by a monster records death after the damage', () => {
+    const state = { ...swingWith([{ x: 6, y: 4, nextAttackTick: 1 }]), playerHp: 10 }
+    const dead = runTicks(state, 1)
+
+    expect(dead.defeated).toBe(true)
+    expect(eventsOf(dead)).toEqual([
+      { type: 'damage', source: 0, target: 'player', ability: 'autoAttack', amount: 10 },
+      { type: 'death', target: 'player' },
+    ])
+  })
+
+  test('I12: a skill remembered in the GCD records nothing when pressed, and cast and damage when it fires', () => {
+    // Furious Thrust(틱 0, seq 0·1) 뒤 틱 8에 누른 두 번째는 GCD가 끝나는 틱 10에 나간다.
+    const first = castFurious(swingWith([{ x: 6, y: 4 }], { targetId: 0 }))
+    const queued = castFurious(runTicks(first, 8))
+    expect(queued.events).toEqual([])
+
+    expect(runTicks(queued, 2).events).toEqual([
+      { seq: 2, type: 'cast', source: 'player', ability: 'furiousThrust' },
+      { seq: 3, type: 'damage', source: 'player', target: 0, ability: 'furiousThrust', amount: 80 },
+    ])
+  })
+})

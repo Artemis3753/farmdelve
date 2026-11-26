@@ -219,6 +219,29 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   later); 5c is 200 from the channel plus 350 from the bleed, against 525 for one Overhead Slam.
   The tier 2 talent that spreads the bleed is not built.
 
+## Combat event rules (decided 2026-11-26)
+
+The state only shows how things are now, so the screen cannot tell who was just hit, by
+what, or who just died, and it needs that to pick an effect. The rules now also write down
+what happened, the way the WoW combat log does next to the game state.
+
+- **Shape** (the author chose one shape for every event, following WoW's shared fields):
+  `{ seq, type, source, target, ability, amount }`. `type` is `cast`, `damage`, `heal` or
+  `death`. `source` and `target` are `'player'` or a monster id. `ability` is
+  `'autoAttack'`, `'bleed'` or a skill key. A death has only `seq`, `type` and `target`
+  (like WoW's `UNIT_DIED`); a cast has no target or amount.
+- **When it is cleared** (the author's choice): only at the start of a tick. Events from a
+  key press stay until the next tick, so the screen cannot miss them if React handles two
+  actions before it draws. `seq` never restarts, and the screen draws only events with a
+  higher `seq` than the last one it drew, so it does not draw one twice.
+- **Details** (Claude's proposals, approved with the cases): `cast` is recorded only when
+  a skill really goes, and a Brutal Swing that hits no one still records it, since the
+  swing is still drawn (like WoW's `SPELL_CAST_SUCCESS`). `amount` is the damage after
+  armor; damage past the remaining health (WoW's `overkill`) is not recorded. Monsters that
+  hit on the same tick record one event each, though health still drops once by the sum. A
+  death comes right after the damage that caused it. The Whirling Slash heal records what
+  was actually restored, and nothing when that is 0.
+
 ## Cases
 
 ### A. Initial layout — `createInitialState`
@@ -354,6 +377,23 @@ the bleed ticks (their comments say how many).
 | H14 | A bleed tick that kills the target comes before the auto-attack, which swings at the next target | The order inside a tick | — |
 | H15 | A player killed on the tick of a bleed tick does not bleed the monster, and later ticks do nothing | Nothing may keep happening to a dead player | — |
 
+### I. Combat events — `combatReducer`
+
+| ID | Behavior | Why it is needed | What it does not catch |
+|----|----------|------------------|------------------------|
+| I1 | A new fight starts with `events: []` and `nextEventSeq: 0` | The starting point of the numbering | — |
+| I2 | A tick clears the last events; `seq` keeps counting up and never restarts | The screen tells new events from old ones by `seq` | — |
+| I3 | An auto-attack records the damage left after armor (armor 250: 32) | `amount` is what the monster lost | — |
+| I4 | Two monsters hitting on the same tick record one event each, in id order, while health drops by the sum | The screen must know who hit | — |
+| I5 | A skill pressed between ticks records cast then damage; another action (walking) does not clear them, the next tick does | Key-press events must survive until drawn | Whether React really draws between actions |
+| I6 | A Brutal Swing that hits no one records only the cast; a skill that cannot go (no target, out of range, no Rage) leaves the state unchanged | The whiff is still drawn; a failed press draws nothing | — |
+| I7 | Brutal Swing and each Whirling Slash tick record one damage event per enemy hit; the channel press records only the cast | One effect per enemy | — |
+| I8 | A bleed tick records damage from the player with ability `bleed`, ignoring armor (50 beside a channel tick of 32) | The bleed has its own effect | — |
+| I9 | A kill records death right after the damage, by a hit or by a bleed; `amount` is not cut down to the health left | The death effect follows the hit | — |
+| I10 | The Whirling Slash heal records the amount actually restored (20, or 10 from 990) after the tick's damage, and nothing at full health | No "+0" on screen | — |
+| I11 | A player killed by a monster records death after the damage | The defeat effect | — |
+| I12 | A skill remembered in the GCD records nothing when pressed, and cast and damage when it fires | The event belongs to the moment the skill goes | — |
+
 ## Movement rule change (2026-11-17)
 
 The author changed the rule from "the first step comes on the next tick" to "a key
@@ -373,7 +413,8 @@ after the table: 16 new rows and 5 re-runs of existing rows against the changed
 rows against the refactored hit code. The Whirling Slash slice added 41 more: 38 new
 rows and 3 re-runs. The Whirling Slash bleed slice added 40 more (all new rows): 39 were caught
 and one survived because it was dead code, which was removed (see below). Counting the 197 before
-the bleed, all 236 breakages of live code were caught, and `rules.js` was restored after every run. The test lists in the first 91 rows
+the bleed, all 236 breakages of live code were caught, and `rules.js` was restored after every run.
+The combat events slice added 21 more (all new rows, listed last), and all were caught: 257 in total. The test lists in the first 91 rows
 are from before the Slam, Swing, Whirling Slash and bleed tests existed, so they do not name
 F11–F26, G1–G12 or H1–H15.
 
@@ -660,6 +701,32 @@ Added with the Whirling Slash bleed (39 caught rows, plus one that survived and 
 | A monster with no bleed gets a bleed object on every tick | G12, H5 |
 | A new monster has no bleed field instead of null | A1, H5, H6, H12 |
 
+Combat events (2026-11-26):
+
+| Breakage | Caught by |
+|----------|-----------|
+| A tick does not clear the events | I2, I5, I7, I8, I9, I10, I12 |
+| `seq` does not go up | I2, I5, I12 |
+| The first `seq` is 1 | I1, I2, I5, I12 |
+| Only the first of several monster hits is recorded | I4 |
+| A monster hit records the summed damage | I4 |
+| The player's death is not recorded | I11 |
+| Damage recorded before armor | I3, I8 |
+| A monster killed by a hit records no death | I9 |
+| The auto-attack records the wrong ability | I3 |
+| A single-target cast is recorded before its checks | F2, F13, F14, I5, I6, I9, I12 |
+| A single-target cast is not recorded | I5, I9, I12 |
+| The area skill records no cast | I6, I7 |
+| The channel records no cast | I7 |
+| A channel tick records the wrong ability | I7, I8, I10 |
+| A bleed tick records no damage | I8, I9 |
+| A monster killed by a bleed records no death | I9 |
+| Bleed events are dropped at the end of the step | I8, I9 |
+| The heal records 20 instead of what was restored | I10 |
+| A heal of 0 is recorded | I7, I8, I10 |
+| Walking clears the events | I5 |
+| Death recorded before the damage | I9 |
+
 The 40th breakage removed the line that stopped a bleed from ticking once its next tick time
 is past its end. It survived because the line could never matter: when the next tick time is
 past the end, the bleed has already been removed at the end tick. The line was deleted as dead
@@ -734,6 +801,14 @@ right corner of the target tile, visible together with the target outline. The b
 no errors or warnings. Not tried by hand: refreshing a bleeding target, a bleed that kills a
 monster, and walking away from a bleeding monster; tests cover them.
 
+Combat effects (2026-11-27, headless Chrome at 1200 × 1000, scale 1): the canvas sits on
+the corridor's top-left corner at 848 × 448, tiles are 48 px, and a real mouse click
+through the canvas still selects a monster. Furious Thrust drew a white flash and 80 on
+the target, Brutal Swing flashed its six tiles and put 40 over both monsters, the player's
+hit showed 10 in red, and a kill left a fading burst while the target moved to the next
+monster. No console errors. Not checked: an effect staying on its tile while the camera
+scrolls, and a high-density display.
+
 ## Not covered yet
 
 - Ranged monsters hold their ground while they can reach the player. Today they chase
@@ -746,3 +821,5 @@ monster, and walking away from a bleeding monster; tests cover them.
 - The elite and ranged mechanics (spin, pools, volley), and the out-of-combat health
   regeneration in the backlog.
 - Run goals: clearing packs, the boss, rewards and the timer.
+- The effect layer (`EffectLayer.jsx`) has no automated tests. Its "draw only a higher `seq`"
+  rule and the last-known position of a dead monster were checked only by hand (below).
