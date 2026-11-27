@@ -135,9 +135,9 @@ describe('createInitialState — initial layout (seam A)', () => {
     expect(state.player).toEqual({ x: 0, y: 4, facing: 'right' })
     expect(state.tick).toBe(0)
     expect(state.heldDirection).toBeNull()
-    // 체력은 백로그의 시작 체력 1000(잠정)이고, 아직 죽지 않았다.
-    expect(state.playerHp).toBe(1000)
-    expect(state.playerMaxHp).toBe(1000)
+    // 체력은 백로그의 시작 체력 2000(잠정)이고, 아직 죽지 않았다.
+    expect(state.playerHp).toBe(2000)
+    expect(state.playerMaxHp).toBe(2000)
     expect(state.defeated).toBe(false)
     // 대상은 아직 없고, 플레이어의 첫 공격 시각 0은 "처음부터 칠 수 있다"는 뜻이다.
     expect(state.targetId).toBeNull()
@@ -484,18 +484,18 @@ describe('combatReducer — monster attacks and defeat (seam D)', () => {
     // 20틱에 거리 1에 닿는다.
     const state = packOneWithPlayerAt(1, 5, 4)
 
-    expect(runTicks(state, 19).playerHp).toBe(1000)
-    expect(runTicks(state, 20).playerHp).toBe(990)
+    expect(runTicks(state, 19).playerHp).toBe(2000)
+    expect(runTicks(state, 20).playerHp).toBe(1990)
   })
 
   test('D2: after the first hit it hits again every 20 ticks', () => {
     // 이미 붙어 있는 배치: 몬스터 (10, 4), 플레이어 (9, 4).
     const state = packOneWithPlayerAt(1, 9, 4)
 
-    expect(runTicks(state, 1).playerHp).toBe(990)
-    expect(runTicks(state, 20).playerHp).toBe(990)
-    expect(runTicks(state, 21).playerHp).toBe(980)
-    expect(runTicks(state, 41).playerHp).toBe(970)
+    expect(runTicks(state, 1).playerHp).toBe(1990)
+    expect(runTicks(state, 20).playerHp).toBe(1990)
+    expect(runTicks(state, 21).playerHp).toBe(1980)
+    expect(runTicks(state, 41).playerHp).toBe(1970)
   })
 
   test('D3: each monster hits for its own damage', () => {
@@ -513,7 +513,7 @@ describe('combatReducer — monster attacks and defeat (seam D)', () => {
       ],
     }
 
-    expect(runTicks(state, 1).playerHp).toBe(970)
+    expect(runTicks(state, 1).playerHp).toBe(1970)
   })
 
   test('D4: arriving does not reset the swing timer — a monster that just swung waits out its interval', () => {
@@ -525,8 +525,8 @@ describe('combatReducer — monster attacks and defeat (seam D)', () => {
       monsters: [{ ...base.monsters[0], x: 7, y: 4, aggro: true, nextAttackTick: 30 }],
     }
 
-    expect(runTicks(state, 29).playerHp).toBe(1000)
-    expect(runTicks(state, 30).playerHp).toBe(990)
+    expect(runTicks(state, 29).playerHp).toBe(2000)
+    expect(runTicks(state, 30).playerHp).toBe(1990)
   })
 
   test('D5: health stops at 0 and the player is defeated', () => {
@@ -1290,8 +1290,8 @@ describe('combatReducer — Whirling Slash channel (seam G)', () => {
     expect(runTicks(cast, 40).playerHp).toBe(520) // 한 번만
 
     // 최대 체력을 넘지 않는다.
-    expect(runTicks(castSpin(hurt(990)), 14).playerHp).toBe(1000)
-    expect(runTicks(castSpin(hurt(1000)), 14).playerHp).toBe(1000)
+    expect(runTicks(castSpin(hurt(1990)), 14).playerHp).toBe(2000)
+    expect(runTicks(castSpin(hurt(2000)), 14).playerHp).toBe(2000)
 
     // 한 틱도 못 맞혔으면 회복이 없다(범위 안에 아무도 없다).
     expect(runTicks(castSpin(hurt(500, [])), 14).playerHp).toBe(500)
@@ -1686,7 +1686,7 @@ describe('combatReducer — combat events (seam I)', () => {
     ])
     const after = runTicks(state, 1)
 
-    expect(after.playerHp).toBe(980)
+    expect(after.playerHp).toBe(1980)
     expect(eventsOf(after)).toEqual([
       { type: 'damage', source: 0, target: 'player', ability: 'autoAttack', amount: 10 },
       { type: 'damage', source: 1, target: 'player', ability: 'autoAttack', amount: 10 },
@@ -1776,11 +1776,11 @@ describe('combatReducer — combat events (seam I)', () => {
       { type: 'damage', source: 'player', target: 0, ability: 'whirlingSlash', amount: 40 },
       { type: 'heal', source: 'player', target: 'player', ability: 'whirlingSlash', amount: 20 },
     ])
-    // 990에서는 최대 체력까지 10만 오른다.
-    expect(healOf(runTicks(hurt(990), 7))).toEqual([
+    // 1990에서는 최대 체력까지 10만 오른다.
+    expect(healOf(runTicks(hurt(1990), 7))).toEqual([
       { type: 'heal', source: 'player', target: 'player', ability: 'whirlingSlash', amount: 10 },
     ])
-    expect(healOf(runTicks(hurt(1000), 7))).toEqual([])
+    expect(healOf(runTicks(hurt(2000), 7))).toEqual([])
   })
 
   test('I11: a player killed by a monster records death after the damage', () => {
