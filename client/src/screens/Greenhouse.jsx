@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Icon from '../components/Icon.jsx'
+import { mergeStack } from '../stacks.js'
 
 // 온실. 심고 거두는 일이 전부 여기서 일어난다 — 메인 화면에 보이는 밭은
 // 들어오는 문이고, 실제 작업대는 이 화면이다(백로그 2026-08-26에 갈라짐).
@@ -89,26 +90,6 @@ function Greenhouse({ templates, player, onPlayerChange, onLeave }) {
     const m = Math.floor(seconds / 60)
     const s = Math.floor(seconds % 60)
     return `${m}:${String(s).padStart(2, '0')}`
-  }
-
-  // 서버가 돌려준 스택 하나를 내 손의 목록에 반영한다.
-  //
-  // map 하나로는 안 되는 자리다. map은 있는 줄을 갈아끼울 뿐 배열의 길이를 못
-  // 바꾸는데, player_stack은 0개가 되면 행이 사라지는 설계라 처음 거두는 작물은
-  // prev.stacks에 아예 없다. 그대로 두면 서버가 보낸 수확물이 에러도 경고도 없이
-  // 사라진다.
-  //
-  // find가 아니라 some인 이유는, 여기서 필요한 것이 찾은 물건이 아니라 갈래를
-  // 가르는 판정 하나뿐이기 때문이다. 아래에서 같은 비교를 한 번 더 하게 되지만
-  // 스택 목록이 열 줄 남짓이라, 그 비용보다 읽기 쉬운 쪽을 골랐다.
-  const mergeStack = (stacks, updated) => {
-    const held = stacks.some((s) => s.stackTemplateId === updated.stackTemplateId)
-
-    // 둘 다 새 배열을 만든다. push로 원본을 늘리면 배열이 "그 배열" 그대로라
-    // React가 바뀐 것을 못 알아채고 화면을 다시 그리지 않는다.
-    return held
-      ? stacks.map((s) => (s.stackTemplateId === updated.stackTemplateId ? updated : s))
-      : [...stacks, updated]
   }
 
   // 빈 칸 하나에 손에 든 씨앗을 심는다.

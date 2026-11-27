@@ -9,6 +9,7 @@
 import { useEffect, useReducer, useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import EffectLayer from '../components/EffectLayer.jsx'
+import { mergeStack } from '../stacks.js'
 import {
   combatReducer,
   createInitialState,
@@ -67,7 +68,8 @@ const KEY_DIRECTIONS = {
 }
 
 // 한 번의 도전. 죽어서 다시 시작하면 이 컴포넌트를 통째로 새로 만든다(맨 아래 Dungeon).
-function DungeonRun({ templates, onLeave, onRetry }) {
+// run은 서버가 열어 준 런(App의 handleEnterDungeon)이고, 클리어를 알릴 때 runId를 쓴다.
+function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
   // useReducer는 useState의 사촌이다. useState는 화면이 새 값을 직접 끼워 넣지만
   // (setNow(...)), useReducer는 "무슨 일이 일어났는지"만 알리고 다음 상태는
   // 규칙서 함수가 계산한다. 전투 상태는 한 틱에 여러 값이 같이 바뀌므로, 바꾸는
@@ -159,6 +161,53 @@ function DungeonRun({ templates, onLeave, onRetry }) {
     }
   }, [])
 
+  // complete 요청이 실패한 이유. 보상은 서버가 주므로, 실패하면 받지 못했다는 걸 알려야 한다.
+  const [completeError, setCompleteError] = useState(null)
+
+  // 마지막 몬스터가 죽으면(state.cleared) 서버에 클리어를 알리고 보상을 받는다.
+  //
+  // 입장과 달리 effect에 두는 이유: 클리어는 클릭이 아니라 틱이 만든 상태 변화라서, "이 값이
+  // 바뀌었기 때문에" 일어나는 일이다. StrictMode가 effect를 두 번 돌리는 건 화면이 처음 뜰 때뿐이고
+  // 그때 cleared는 언제나 false라 요청은 나가지 않는다. 클리어 뒤에는 규칙서가 상태를 얼려서
+  // cleared가 다시 바뀌지 않으므로, 요청은 런마다 한 번이다.
+  //
+  // 죽거나 포기한 런은 여기서 알리지 않는다. 다음 입장이 서버에서 failed로 닫는다(2026-11-27).
+  useEffect(() => {
+    if (!state.cleared) return
+
+    async function reportClear() {
+      try {
+        const res = await fetch(`/api/dungeon/${run.runId}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cleared: true }),
+        })
+        const data = await res.json()
+
+        if (!res.ok) {
+          setCompleteError(`Rejected: ${data.reason}`)
+          return
+        }
+
+        // 수확과 같은 모양이라 같은 방식으로 반영한다. gold·stacks는 서버가 계산한 "이제 얼마인가"를
+        // 그대로 받는다 — 여기서 100을 더하면 보상 규칙이 두 곳에 생긴다. stacks는 문장을 못 받는
+        // 시간 초과 클리어면 빈 배열이라, 줄 수만큼 mergeStack을 차례로 적용한다.
+        onPlayerChange((prev) => ({
+          ...prev,
+          gold: data.gold,
+          highestTierCleared: data.highestTierCleared,
+          stacks: data.stacks.reduce((stacks, updated) => mergeStack(stacks, updated), prev.stacks),
+        }))
+      } catch (err) {
+        setCompleteError(`Request failed: ${err.message}`)
+      }
+    }
+
+    reportClear()
+    // runId와 onPlayerChange(App의 setPlayer)는 이 런 동안 바뀌지 않는다. 목록에 넣는 건 effect가
+    // 읽는 값을 빠짐없이 적는 규칙 때문이고, 실제로 다시 돌게 만드는 건 cleared 하나다.
+  }, [state.cleared, run.runId, onPlayerChange])
+
   const templateOf = (monster) =>
     templates.monsters.find((t) => t.monsterTemplateId === monster.monsterTemplateId)
   const nameOf = (monster) => templateOf(monster).name
@@ -246,6 +295,9 @@ function DungeonRun({ templates, onLeave, onRetry }) {
         </span>
       </section>
 
+      {/* 클리어를 서버에 알리지 못했을 때만 보인다. 보상은 서버가 주므로 받지 못했다는 뜻이다. */}
+      {completeError && <p className="hint">{completeError}</p>}
+
       {/* 백로그: 죽으면 "Try again"만 보여 주고 페널티는 없다. 나가기는 위의 Abandon run이다. */}
       {state.defeated && (
         <section className="defeat">
@@ -321,18 +373,19 @@ function DungeonRun({ templates, onLeave, onRetry }) {
   )
 }
 
-function Dungeon({ templates, onLeave }) {
-  // 몇 번째 도전인가. key가 바뀌면 React는 DungeonRun을 지우고 새로 만들어서, 상태(체력·
-  // 몬스터·위치)와 타이머가 전부 처음으로 돌아간다. 상태를 되돌리는 reset 이벤트를
-  // 따로 만들지 않아도 되는 가장 짧은 방법이다.
-  const [attempt, setAttempt] = useState(0)
-
+function Dungeon({ templates, run, onLeave, onRetry, onPlayerChange }) {
+  // key가 바뀌면 React는 DungeonRun을 지우고 새로 만들어서, 상태(체력·몬스터·위치)와 타이머가
+  // 전부 처음으로 돌아간다. 상태를 되돌리는 reset 이벤트를 따로 만들지 않아도 되는 가장 짧은
+  // 방법이다. Try again은 서버에 새 런을 열고 새 runId를 받으므로, 그 id를 key로 쓰면 도전 횟수를
+  // 따로 세지 않아도 된다(2026-11-27, 예전에는 attempt 카운터였다).
   return (
     <DungeonRun
-      key={attempt}
+      key={run.runId}
       templates={templates}
+      run={run}
       onLeave={onLeave}
-      onRetry={() => setAttempt(attempt + 1)}
+      onRetry={onRetry}
+      onPlayerChange={onPlayerChange}
     />
   )
 }
