@@ -97,16 +97,18 @@ const SWING_MAX_TARGETS = 5;
 // Whirling Slash(2026-11-17, 숫자는 잠정): 채널 스펜더. 포인트당 0.7초(스펙) 동안 돌고, 0.7초마다
 // 한 번(포인트당 한 틱) 사거리 1칸 안의 모든 적에게 SPIN_TICK_DAMAGE를 준다. 틱 간격이 지속 시간과
 // 같은 단위라서 n포인트는 정확히 n틱이다. 끝날 때 한 틱이라도 맞혔으면 체력을 SPIN_COMPLETION_HEAL
-// 만큼 회복한다(백로그 표의 20, 포션 600보다 훨씬 작다). 틱 피해 40은 Brutal Swing의 한 명당 피해와
-// 같은 값이다: 스펜더라 분노를 쓰는 대신 GCD를 채널이 끝날 때까지 잡는다.
+// 만큼 회복한다(백로그 표의 20, 포션 600보다 훨씬 작다). 틱 피해는 처음엔 Brutal Swing과 같은 40이었는데,
+// 채널이 GCD를 3.5초나 잡는 값에 비해 약해서 2026-11-27 첫 클리어 뒤 90으로 올렸다: 적 4마리 기준으로
+// "다른 걸 눌렀을 때보다 GCD당 더 버는 양"이 Overhead Slam(약 445)과 같아지는 값이 약 88이다.
+// 대상이 하나면 여전히 Slam이 낫다(채널 약 149). 계산은 백로그 Whirling Slash 절.
 const SPIN_TICK_INTERVAL = secondsToTicks(0.7);
-const SPIN_TICK_DAMAGE = 40;
+const SPIN_TICK_DAMAGE = 90;
 const SPIN_COMPLETION_HEAL = 20;
 
 // Whirling Slash의 출혈(2026-11-18, 숫자는 잠정): 채널을 누르는 순간 선택한 대상(사거리 1칸 안)에게
 // 건다. 지속시간은 4초 + 쓴 포인트당 2초라서 1c 6초, 5c 14초이고 틱 간격(2초)의 배수라 틱이 딱 떨어진다.
-// 틱 피해 50은 방어력을 무시한다(백로그 Stats). 5c 한 번이면 채널 200 + 출혈 350 = 550으로 단일 대상
-// 스펜더(Overhead Slam 5c 525)와 비슷하고, 범위 피해와 회복은 덤이다.
+// 틱 피해 50은 방어력을 무시한다(백로그 Stats). 5c 한 번이면 대상 하나에 채널 450 + 출혈 350 = 800이지만,
+// 그동안 GCD를 3.5초 잡으므로 단일 대상에서는 Overhead Slam(5c 525, GCD 1초)보다 손해다.
 const BLEED_BASE_TICKS = secondsToTicks(4);
 const BLEED_TICKS_PER_POINT = secondsToTicks(2);
 const BLEED_TICK_INTERVAL = secondsToTicks(2);
