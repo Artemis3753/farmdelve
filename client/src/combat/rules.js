@@ -36,13 +36,22 @@ export const MELEE_RANGE = 1;
 
 // 플레이어의 시작 체력(백로그 Tier-1 numbers, 잠정). 실제로는 장비의 base_health가
 // 더해진 값이 되겠지만, 장비 연결 전이라 상수로 둔다.
-const PLAYER_MAX_HP = 1000;
+// 2026-11-27 1000 → 2000(J): 첫 22마리 런에서 체력이 모자라 죽어서 일단 올렸다. 백로그 수치는 아직 1000이다.
+const PLAYER_MAX_HP = 2000;
+
+// 전투 밖 회복(2026-11-27, J): 어그로 붙은 몬스터가 하나도 살아 있지 않으면 초당 최대 체력의 5%가 찬다.
+// 솔로라 힐러가 없고 포션도 아직 없어서, 회복 수단이 0이면 22마리 동안 받은 피해가 쌓이기만 했다.
+// 규칙은 백로그(2026-09-30)에 초당 20%로 있었는데, 그 속도면 팩 사이 5초 걷기에 다 차서 쉴지 고민할 일이
+// 없다. 그래서 5%로 낮췄다. 속도는 WoW Recuperate(전투 밖 30초에 150%)와 같다. 쉬는 동안에도 런 타이머는 흐르니 "쉴까, 그냥 갈까"가
+// 기록과 안전의 맞교환이 된다. 기다리는 시간 없이 바로 차는 이유: 어그로는 죽을 때까지 풀리지 않아서
+// 싸우는 도중에 회복을 끼워 넣을 틈이 원래 없다.
+const REST_HEAL_PER_SECOND = 0.05;
 
 // 플레이어 자동공격(2026-11-17, 숫자는 전부 잠정이고 나중에 조정한다). 백로그는 "무기 종류의
 // 고정 속도, medium"이라고만 하고 값을 정하지 않았다.
 //
 // 한 번에 주는 피해 = 공격력 × 계수. 공격력 10은 시작 낫의 자리표시 값(백로그 Still open)이다.
-// 스킬이 붙기 전이라 자동공격만으로 쥐 한 마리(hp 1000)를 잡는 데 50초가 걸린다.
+// 자동공격만으로는 쥐 한 마리(hp 500, 2026-11-27 절반으로 내림)를 잡는 데 25초가 걸린다.
 const PLAYER_ATTACK_POWER = 10;
 const AUTO_ATTACK_COEFFICIENT = 4;
 const PLAYER_ATTACK_TICKS = 2 * TICKS_PER_SECOND;
@@ -88,16 +97,18 @@ const SWING_MAX_TARGETS = 5;
 // Whirling Slash(2026-11-17, 숫자는 잠정): 채널 스펜더. 포인트당 0.7초(스펙) 동안 돌고, 0.7초마다
 // 한 번(포인트당 한 틱) 사거리 1칸 안의 모든 적에게 SPIN_TICK_DAMAGE를 준다. 틱 간격이 지속 시간과
 // 같은 단위라서 n포인트는 정확히 n틱이다. 끝날 때 한 틱이라도 맞혔으면 체력을 SPIN_COMPLETION_HEAL
-// 만큼 회복한다(백로그 표의 20, 포션 600보다 훨씬 작다). 틱 피해 40은 Brutal Swing의 한 명당 피해와
-// 같은 값이다: 스펜더라 분노를 쓰는 대신 GCD를 채널이 끝날 때까지 잡는다.
+// 만큼 회복한다(백로그 표의 20, 포션 600보다 훨씬 작다). 틱 피해는 처음엔 Brutal Swing과 같은 40이었는데,
+// 채널이 GCD를 3.5초나 잡는 값에 비해 약해서 2026-11-27 첫 클리어 뒤 90으로 올렸다: 적 4마리 기준으로
+// "다른 걸 눌렀을 때보다 GCD당 더 버는 양"이 Overhead Slam(약 445)과 같아지는 값이 약 88이다.
+// 대상이 하나면 여전히 Slam이 낫다(채널 약 149). 계산은 백로그 Whirling Slash 절.
 const SPIN_TICK_INTERVAL = secondsToTicks(0.7);
-const SPIN_TICK_DAMAGE = 40;
+const SPIN_TICK_DAMAGE = 90;
 const SPIN_COMPLETION_HEAL = 20;
 
 // Whirling Slash의 출혈(2026-11-18, 숫자는 잠정): 채널을 누르는 순간 선택한 대상(사거리 1칸 안)에게
 // 건다. 지속시간은 4초 + 쓴 포인트당 2초라서 1c 6초, 5c 14초이고 틱 간격(2초)의 배수라 틱이 딱 떨어진다.
-// 틱 피해 50은 방어력을 무시한다(백로그 Stats). 5c 한 번이면 채널 200 + 출혈 350 = 550으로 단일 대상
-// 스펜더(Overhead Slam 5c 525)와 비슷하고, 범위 피해와 회복은 덤이다.
+// 틱 피해 50은 방어력을 무시한다(백로그 Stats). 5c 한 번이면 대상 하나에 채널 450 + 출혈 350 = 800이지만,
+// 그동안 GCD를 3.5초 잡으므로 단일 대상에서는 Overhead Slam(5c 525, GCD 1초)보다 손해다.
 const BLEED_BASE_TICKS = secondsToTicks(4);
 const BLEED_TICKS_PER_POINT = secondsToTicks(2);
 const BLEED_TICK_INTERVAL = secondsToTicks(2);
@@ -108,6 +119,24 @@ const BLEED_TICK_DAMAGE = 50;
 const BLEED_CARRY_RATIO = 0.3;
 
 export const RAGE_PER_POINT = 10;
+
+// 쿨기 둘(spec-note 5·6번, 2026-11-27 구현). 지속시간과 쿨은 spec-note 값 그대로다.
+// 둘 다 GCD를 쓰지 않는다: WoW가 Shadowlands에서 순간 화력 쿨기를 GCD에서 뺀 이유와 같다 — 다음 버튼을
+// 강화하는 것 말고 아무것도 안 하는 버튼이 GCD를 먹으면 로테이션이 끊긴다. 그래서 채널 중에도 켜진다.
+// 상태는 스킬 id와 같은 이름의 객체 { endTick, readyTick }(Tilling은 균열 위치 x, y도)에 든다.
+export const COOLDOWN_SKILLS = {
+  marketPriceRage: { durationTicks: secondsToTicks(15), cooldownTicks: secondsToTicks(60) },
+  tilling: { durationTicks: secondsToTicks(15), cooldownTicks: secondsToTicks(30) },
+};
+
+// Market Price Rage는 spec-note에 "공격력 +20%"라고 적혀 있지만, 지금 공격력을 쓰는 건 자동공격뿐이고
+// 스킬은 고정 피해다. 문구대로면 평타만 세지므로 "플레이어가 주는 모든 피해 +20%"로 읽었다.
+const MARKET_PRICE_RAGE_MULTIPLIER = 1.2;
+
+// Tilling의 균열: 쓴 자리 주변 1칸(9칸)에 고정되고, 그 안의 적은 받는 피해가 10% 는다. 쓴 자리에 고정하는
+// 이유는 spec-note의 "땅에 균열을 낸다"와 특성 4b("균열 안에 서 있을 때")가 둘 다 위치를 전제해서다.
+const TILLING_MULTIPLIER = 1.1;
+const RIFT_RADIUS = 1;
 
 // Overhead Slam의 피해 곡선(2026-11-17 합의): 200 × n^0.6, n = 쓴 포인트, 반올림. 포인트를
 // 하나 더 모을 때마다 늘어나는 양이 줄어드는 오목 곡선이다. 사이클 하나는 Furious Thrust n번과
@@ -197,6 +226,9 @@ export function createInitialState(monsters, packs) {
     playerMaxHp: PLAYER_MAX_HP,
     // 체력이 0이 되면 true. 그 뒤로는 전투가 멈춘다(백로그: 죽으면 "try again"만).
     defeated: false,
+    // 마지막 몬스터가 죽으면 true. defeated와 같이 그 뒤로는 전투가 멈추고, 화면은 이걸 보고 서버에
+    // 클리어를 알린다. 몬스터가 0마리인 빈 복도로 시작해도 false다 — 이동 테스트가 빈 복도를 쓴다.
+    cleared: false,
     // 자동공격 대상(몬스터 id). 없으면 null. 플레이어가 클릭으로 고르고, 대상이 죽으면 규칙이
     // 다음 대상을 고른다.
     targetId: null,
@@ -209,6 +241,10 @@ export function createInitialState(monsters, packs) {
     // 돌고 있는 채널(Whirling Slash). 없으면 null, 있으면 { ticksLeft, nextTickTick, connected }:
     // 남은 틱 수, 다음 틱이 나가는 시각, 지금까지 한 틱이라도 맞혔는가(끝날 때의 회복 조건).
     channel: null,
+    // 쿨기 둘. endTick = 효과가 끝나는 틱(지금 틱이 이보다 작으면 켜져 있다), readyTick = 다시 쓸 수 있는 틱
+    // (0이라 처음부터 쓸 수 있다). GCD의 gcdReadyTick과 같은 방식이다. 균열 위치는 쓴 순간의 플레이어 칸이다.
+    marketPriceRage: { endTick: 0, readyTick: 0 },
+    tilling: { endTick: 0, readyTick: 0, x: 0, y: 0 },
     // 복도 왼쪽 끝, 세로 가운데에서 출발한다. 1번 팩(x = 10)까지 어그로 반경
     // 5칸을 빼면 다섯 칸을 걸어야 첫 싸움이 붙는다.
     player: { x: 0, y: Math.floor(CORRIDOR_HEIGHT / 2), facing: 'right' },
@@ -412,18 +448,40 @@ function hitTarget(state, target, rawDamage, ability) {
 // ability는 사건에 적을 이름이다('autoAttack' 또는 SKILLS의 키). 사건의 amount는 방어력을 뺀 값이고,
 // 남은 hp를 넘는 초과 피해는 따로 적지 않는다 — 읽을 곳이 없다.
 function damageMonster(state, monster, rawDamage, ability) {
-  const damage = Math.round(rawDamage * (1 - monster.armor / (monster.armor + ARMOR_K)));
+  // 쿨기 배율과 방어력을 같이 곱하고 반올림은 마지막에 한 번만 한다. 중간에 반올림하면 오차가 두 번 쌓인다.
+  const damage = Math.round(
+    rawDamage * damageMultiplier(state, monster) * (1 - monster.armor / (monster.armor + ARMOR_K)),
+  );
   const hp = monster.hp - damage;
 
   const hit = record(state, { type: 'damage', source: 'player', target: monster.id, ability, amount: damage });
   if (hp > 0) {
     return { ...hit, monsters: state.monsters.map((m) => (m.id === monster.id ? { ...m, hp } : m)) };
   }
+  // 몬스터를 지우는 곳이 여기와 bleedStep 둘이라 클리어 판정도 두 곳에 있다(defeated가 체력이 0이
+  // 되는 자리에서 정해지는 것과 같은 방식). 키 입력으로 죽여도 틱을 기다리지 않고 바로 켜진다.
+  const monsters = state.monsters.filter((m) => m.id !== monster.id);
   return {
     ...record(hit, { type: 'death', target: monster.id }),
-    monsters: state.monsters.filter((m) => m.id !== monster.id),
+    monsters,
+    cleared: monsters.length === 0,
   };
 }
+
+// 지금 이 몬스터에게 들어가는 플레이어 피해 배율. 켜진 쿨기마다 곱한다(둘 다면 1.2 × 1.1 = 1.32).
+// 더하지 않고 곱하는 이유: 출처가 다른 배율이라 "같은 종류끼리는 더한다" 같은 묶음 규칙이 필요 없다.
+function damageMultiplier(state, monster) {
+  let multiplier = 1;
+  if (state.tick < state.marketPriceRage.endTick) multiplier *= MARKET_PRICE_RAGE_MULTIPLIER;
+  if (inRift(state, monster.x, monster.y)) multiplier *= TILLING_MULTIPLIER;
+  return multiplier;
+}
+
+// (x, y)가 지금 켜진 균열 안인가. 균열이 꺼져 있으면 언제나 false다. 화면도 이걸로 균열 칸을 칠한다.
+export function inRift(state, x, y) {
+  return state.tick < state.tilling.endTick && distanceBetween({ x, y }, state.tilling) <= RIFT_RADIUS;
+}
+
 
 // 대상이 죽어서 사라졌으면 어그로 붙은 가장 가까운 몬스터를 새 대상으로 잡는다(없으면 대상 없음).
 // 대상이 원래 없었거나 살아 있으면 그대로 둔다: 대상 없이 휘두른 스킬이 누군가를 죽여도 선택이
@@ -596,10 +654,13 @@ function bleedStep(state) {
 
     const { endTick, nextTickTick } = m.bleed;
     const ticks = state.tick >= nextTickTick;
-    const hp = ticks ? m.hp - BLEED_TICK_DAMAGE : m.hp;
+    // 쿨기 배율은 거는 순간이 아니라 틱이 나가는 순간에 본다(현행 WoW처럼 스냅샷 없음). 출혈마다 배율을
+    // 저장할 필요가 없고, 버프가 꺼지면 이미 걸린 출혈도 바로 약해진다.
+    const amount = Math.round(BLEED_TICK_DAMAGE * damageMultiplier(state, m));
+    const hp = ticks ? m.hp - amount : m.hp;
     if (ticks) {
       next = record(next, {
-        type: 'damage', source: 'player', target: m.id, ability: 'bleed', amount: BLEED_TICK_DAMAGE,
+        type: 'damage', source: 'player', target: m.id, ability: 'bleed', amount,
       });
     }
     if (hp <= 0) {
@@ -614,7 +675,8 @@ function bleedStep(state) {
     monsters.push({ ...m, hp, bleed });
   }
 
-  return retargetIfLost({ ...next, monsters });
+  // 출혈로 마지막 몬스터가 죽어도 클리어다. damageMonster를 거치지 않으니 여기서도 판정한다.
+  return retargetIfLost({ ...next, monsters, cleared: monsters.length === 0 });
 }
 
 
@@ -657,6 +719,29 @@ function channelStep(state) {
 }
 
 
+// 쿨기를 켠다. 쿨 중이면 상태를 그대로 돌려준다(아무 일도 없음). GCD·채널·대상·사거리와 상관없이 켜지고
+// GCD도 시작하지 않는다. 지속이 쿨보다 짧아서(15초 < 30초·60초) 켜진 채 다시 켜는 경우는 없다.
+function castCooldown(state, skillId) {
+  if (state.tick < state[skillId].readyTick) return state;
+
+  const { durationTicks, cooldownTicks } = COOLDOWN_SKILLS[skillId];
+  const timing = { endTick: state.tick + durationTicks, readyTick: state.tick + cooldownTicks };
+  // 균열만 위치가 있다: 쓴 순간 플레이어가 선 칸.
+  const effect = skillId === 'tilling' ? { ...timing, x: state.player.x, y: state.player.y } : timing;
+  return { ...record(state, { type: 'cast', source: 'player', ability: skillId }), [skillId]: effect };
+}
+
+
+// 전투 밖이면 체력을 한 틱만큼 채운다(최대 체력까지). 어그로를 붙인 바로 다음에 불려서, 새 팩에 들어선
+// 틱에는 차지 않는다. 몬스터를 죽이는 단계들보다 앞이라, 마지막 몬스터가 죽은 틱에도 차지 않고 다음 틱부터
+// 찬다. 회복 사건은 남기지 않는다 — 매 틱 +10이 뜨면 화면이 지저분해서, HP바가 차오르는 것으로 충분하다.
+function regenStep(state) {
+  if (state.monsters.some((m) => m.aggro)) return state;
+  const heal = Math.round((state.playerMaxHp * REST_HEAL_PER_SECOND) / TICKS_PER_SECOND);
+  return { ...state, playerHp: Math.min(state.playerMaxHp, state.playerHp + heal) };
+}
+
+
 // GCD 중에 기억해 둔 스킬을 GCD가 끝나는 틱에 쓴다. 그 순간 쓸 수 없으면(대상이 사라졌거나
 // 사거리 밖) 조용히 버리고 GCD도 쓰지 않는다. 몬스터에게 죽은 플레이어는 쓰지 못한다.
 function queuedSkillStep(state) {
@@ -676,7 +761,7 @@ function queuedSkillStep(state) {
 // 공격은 걸음과 달리 각자 자기 타이머를 쓴다 — 팩이 한꺼번에 때리면 피해가 몰린다.
 // 몬스터 공격이 플레이어 공격보다 먼저라서, 죽어 가는 몬스터도 마지막 한 대는 때리고 간다.
 function advanceCombat(state) {
-  const pulled = pullPacks(state);
+  const pulled = regenStep(pullPacks(state));
   const chased = pulled.tick % MOVE_TICKS === 0 ? chaseStep(pulled) : pulled;
   return playerAttackStep(queuedSkillStep(bleedStep(channelStep(attackStep(chased)))));
 }
@@ -686,8 +771,8 @@ function advanceCombat(state) {
 // React는 "객체가 바뀌었나"를 === 로 보고 다시 그릴지 정하기 때문에, 원래 객체를
 // 고쳐서 돌려주면 바뀐 것을 못 알아채고 화면이 그대로 남는다.
 export function combatReducer(state, action) {
-  // 죽은 뒤에는 아무 일도 일어나지 않는다. 같은 객체를 돌려줘서 화면도 다시 안 그린다.
-  if (state.defeated) return state;
+  // 죽은 뒤나 클리어한 뒤에는 아무 일도 일어나지 않는다. 같은 객체를 돌려줘서 화면도 다시 안 그린다.
+  if (state.defeated || state.cleared) return state;
 
   switch (action.type) {
     // 시간이 한 틱 흐르고, 플레이어는 걸음 간격이 지났으면 한 걸음 간다. 그 뒤에
@@ -711,6 +796,8 @@ export function combatReducer(state, action) {
     // 끝나는 틱에 쓴다(마지막에 누른 것이 이긴다). 그보다 일찍 누른 입력은 버린다. 모르는 스킬 id는
     // castSkill이 걸러서 아무 일도 없다.
     case 'useSkill': {
+      // 쿨기는 GCD를 보기 전에 먼저 처리한다 — GCD 중에도 켜지고, 미리 눌러 두는 대기열도 쓰지 않는다.
+      if (COOLDOWN_SKILLS[action.skill]) return castCooldown(state, action.skill);
       const ticksLeft = state.gcdReadyTick - state.tick;
       if (ticksLeft <= 0) return castSkill(state, action.skill);
       if (ticksLeft <= QUEUE_WINDOW_TICKS) return { ...state, queuedSkill: action.skill };

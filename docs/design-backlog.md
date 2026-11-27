@@ -553,10 +553,10 @@ Slash bleed in code" below. This section describes the channel and the heal as t
 - **Within one tick:** monsters hit, the channel ticks, a remembered skill fires, the auto-attack
   swings (the bleed ticks were added after the channel on 2026-11-18). The auto-attack keeps
   swinging during the channel, because it does not use the GCD.
-- **Numbers (balance, provisional):** 40 per tick per enemy, the same as one Brutal Swing hit,
-  because this skill costs Rage and holds the GCD for the whole channel. The completion heal of 20
-  is the figure already in the healing table, 3% of the potion's 600. A 5c channel is 200 to every
-  enemy in range over 3.5 s, so four rats around the player take 800 in total, against one
+- **Numbers (balance, provisional):** 90 per tick per enemy since 2026-11-27 (it started at 40,
+  the same as one Brutal Swing hit; see "Buff direction decided" below). The completion heal of 20
+  is the figure already in the healing table, 3% of the potion's 600. A 5c channel is 450 to every
+  enemy in range over 3.5 s, so four rats around the player take 1,800 in total, against one
   Overhead Slam's 525 on one enemy.
 - **Still open:** whether the heal should be larger once the channel has a real cost, and
   feedback for a channel that hit nothing.
@@ -608,6 +608,44 @@ covered by tests H1–H15 and was checked by hand in the browser. The monster st
 - **Still open:** the tier-2 talent that spreads the bleed to a second target per tick, and whether
   such a spread landing on a bleeding monster follows the pandemic rule (the question under
   Non-blocking). The 50 and the 2-second tick are untested balance guesses.
+- **Buff direction decided (2026-11-27): numbers only.** After the first hand-played run
+  the channel felt weak. Its total is not small (5c on four enemies is 800 plus a 350
+  bleed, over twice a 5c Overhead Slam), but the channel holds the GCD for 3.5 s, and
+  against pressing Brutal Swing in that time it gains only about 170 per GCD, where the
+  Slam gains about 445 over a Furious Thrust. The GCD lock is the cost the spec note
+  chose, so the rule stays and the tick damage rises (around 90 would even it out on
+  four enemies). Compared and not taken: a short channel that ramps up (Fellowship's
+  Hammer Storm; would rewrite most of seam G), freeing the GCD during the channel (WoW's
+  Slayer Bladestorm; removes the cost), and bleeding every enemy hit (WoW's Crimson
+  Tempest; would empty the tier 2a talent). The number is set in the balance pass after
+  the two cooldowns are in, since tuning a partial kit would be undone when they arrive.
+- **Set to 90 (2026-11-27), after the first clear** (22/22 in 2:57 with 1,110 of 2,000
+  health left, resting between pulls). Evening out the gain per GCD on four enemies:
+  `(5 × 4 × tick + 350 − 3.5 × 160) / 3.5 = 445` gives a tick of about 88, rounded to 90
+  (gain about 454 per GCD; at 40 it was about 169). On one enemy the channel gains about
+  149 per GCD (`(450 + 350 − 3.5 × 80) / 3.5`), so the Slam stays the single-target
+  choice. Nothing else was tuned: one run is too little to move monster health or the
+  rest heal, and "resting is safe, chain pulling is fast" is the trade the leaderboard
+  rewards. Second run, at 90 and chain pulling most of the way: cleared in 1:49 with 850
+  health left. That meets the tier-1 aim of clearing without rest, so the numbers stay.
+
+### Cooldowns in code (2026-11-27)
+
+Market Price Rage (key 5) and Tilling (key 6) from `spec-note.txt`, with its numbers:
++20% for 15 s on a 60 s cooldown, and a rift for 15 s on a 30 s cooldown that makes
+enemies inside take 10% more. The rules and their reasons are in `docs/test-plan.md`
+(Cooldown rules); in short:
+
+- **"Attack power +20%" reads as all player damage +20%**, because only the auto-attack
+  uses attack power and the literal reading would leave every skill untouched.
+- **Off the GCD**, usable during a channel — WoW took burst cooldowns off the GCD in
+  Shadowlands for the same reason: a GCD spent only to boost later presses breaks the
+  rotation.
+- **Bleed ticks read the multipliers when they land** (no snapshot, as in WoW since 2014).
+- **The two multiply**: 1.32 with both. Rounded once, after armor.
+- **The rift is fixed where it was cast**, three by three around that tile, because the
+  spec says it tears the ground and talent 4b ("standing inside the rift") needs a place.
+  The screen marks it with a temporary colour until there is art.
 
 ### Trash mechanics (2026-08-27)
 
@@ -739,6 +777,15 @@ it later; monster health is worked backwards from it and from time.
 | Elite B — Blight Slug | 1600 | 250 | 2000 |
 | Ranged — Seedspitter | 1500 | 0 | 1500 |
 
+- **Tier 1 runs at half these values** (2026-11-27): Field Rat 500, the two
+  elites 800, Seedspitter 750, in `server/db/seed.sql`. The numbers above
+  assume perfect play at 100 DPS, which put even single pulls at 305
+  seconds, over the 300-second limit; the first hand-played run killed at
+  about 55% of that rate and died at 8 of 22. Tier 1 is meant to clear with
+  steady chain pulling and no rest, so it is the entry difficulty. The
+  ratios are unchanged, so the elite and armor reasoning below still holds.
+  The method (work health backwards from player DPS and time) stays for the
+  tiers above.
 - Elites at **twice the swarm** keep "too much health to melt with AoE"
   true: when the swarm dies the elite still has half.
 - **Only the elites have armor** (*provisional*). 250 armor is 20%
@@ -752,8 +799,9 @@ it later; monster health is worked backwards from it and from time.
 one sentence: *one pack costs about a pickup, two packs cost a potion,
 three packs cannot be outlasted with one.*
 
-- **Player health is 1000**, the total a starting tier-1 set gives. How it
-  splits between base and gear is still open.
+- **Player health is 2000** (raised from 1000 on 2026-11-27, after the first
+  hand-played 22-monster run died). It stands for the total a starting tier-1
+  set gives; how it splits between base and gear is still open.
 - **A four-monster pack kills in 40 seconds with no healing and no
   armor.** 30 was harsh once health carries from pack to pack; 50 let a
   three-pack pull live on a single potion.
@@ -781,13 +829,25 @@ costs 420, under half of 1000.
 | Potion | 600 (60%), 180 s cooldown |
 | Ground pickup | 150 (15%), 60 s cooldown — 2.5 per second against the potion's 3.3 |
 | Whirling Slash completion | 20 |
-| **Out of combat** | **20% per second** — five seconds of walking refills |
+| **Out of combat** | **5% per second** — 20 seconds from empty to full (was 20%, see below) |
 
 - **Out-of-combat regeneration is a new rule** (2026-09-30). Nothing
   before it said whether health comes back between packs, and without it
   a solo run's damage does not fit inside the potion rule — ordinary
   attacks alone come to over 3100 across the eight packs. "Out of combat"
   means no monster is engaged.
+- **Built on 2026-11-27, at 5% instead of 20%.** "Engaged" became "no
+  aggroed monster is alive", since aggro never drops until a monster dies.
+  Health starts rising on the next tick with no delay, because a fight
+  cannot be paused to rest. The rate matches WoW's Recuperate (150% over
+  30 s out of combat). 20% refilled health on the five-second walk between
+  packs, so resting was never a choice. At 5% a full refill costs run time,
+  which the fastest-clear leaderboard (decided 2026-11-26, after the 20%)
+  turns into a trade between record and safety. No heal events are
+  recorded: a +10 every tick would clutter the screen, and the health bar
+  rising is enough.
+- The next two bullets were worked out at 20% and 1000 health, and have not
+  been redone for 5% and 2000.
 - With it, **every single pack is survivable without a potion**, the
   (3,4) merge ends with 190 left, and (7,8) goes negative — the potion is
   what makes the hardest merge possible.
@@ -1485,6 +1545,17 @@ Table list is settled — see `data-model.md`. What is left:
   off `highest_tier_cleared`. It starts earning its place the day drops
   carry different base levels — and with no migrations, `gear_template` can
   take the column back for the cost of one line.
+- **Monsters sharing a tile, with stacked health bars** (2026-11-27). Raised
+  after the first 22-monster run: let a pack clump onto one tile, as mobs
+  clump on a WoW tank, and stack their health bars upward like the Plater
+  nameplate addon, so the bars double as the way to pick a target. Parked
+  because halving tier-1 health addresses the same difficulty for far less,
+  and because it touches the chase rules and their tests, the tile drawing,
+  click targeting and the effect layer at once. It also weakens "one monster
+  per tile", which is what lets the player count enemies at a glance. Revisit
+  if area skills still feel cramped after the health change; the cheaper
+  alternative then is a Brutal Swing that hits all eight tiles around the
+  player, as WoW's Whirlwind and Thunder Clap hit all around.
 
 ---
 
@@ -1520,12 +1591,14 @@ nine more tiers would mostly be numbers. Everything cut is listed in §4.
       schedule. The talent tree was cut on 2026-11-22.
 - [x] Monster data — the trash roster (2026-09-30). The boss was cut with
       its mechanics.
-- [ ] **A complete dungeon loop, tier 1 only** — enter -> fight -> clear ->
+- [x] **A complete dungeon loop, tier 1 only** — enter -> fight -> clear ->
       rewards (gold and crests) -> spend them on an upgrade. Death shows
       "try again" with no penalty. Narrowed from tiers 1 through 10 on
-      2026-11-22. The server pays the clear reward since 2026-11-27. Today a
-      run can still end in defeat but not in a clear, and the client does not
-      call the two dungeon endpoints yet.
+      2026-11-22. The server pays the clear reward since 2026-11-27. Since the
+      same day the client opens and completes runs, shows the timer, kills and
+      a clear line with the rewards, and the crests reach the smithy. The
+      first full 22-monster run played by hand cleared in 2:57, inside the
+      5-minute limit (2026-11-27).
 - [ ] **Leaderboard** — fastest tier 1 clear. Small, and it is a ranking
       query on the server rather than more screen work. The server stamps
       the start and end times, so the time is its own clock; only "cleared"

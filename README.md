@@ -31,12 +31,15 @@ In development. Working end to end, from the screen to the database:
 Crafting, which refines produce into an upgrade material, has an endpoint
 (`POST /api/craft/:recipeId`) but no screen yet.
 
-The dungeon screen runs combat in the browser only. Arrow keys or WASD move
-one tile at a time, monster packs aggro and chase, both sides auto-attack, and
+The dungeon screen runs combat in the browser. Arrow keys or WASD move one
+tile at a time, monster packs aggro and chase, both sides auto-attack, and
 four skills share a global cooldown: two build Rage, two spend it, and one of
-the spenders leaves a bleed. A run can end in defeat but not yet in a clear,
-and the screen does not call the two dungeon endpoints yet. The tier, timer
-and pull counter at the top of the screen are fixed placeholders.
+the spenders leaves a bleed. Two more are cooldowns off the global cooldown:
+one raises all damage, the other marks a patch of ground where enemies take more. Entering opens a run on the server, and the
+header counts down the time limit and the kills. Killing the last monster
+reports the clear, and the server pays gold and Seed Crests that the smithy
+can spend. The first full 22-monster run played by hand cleared in 2:57,
+inside the 5-minute limit.
 
 ## 🏃 Running it locally
 

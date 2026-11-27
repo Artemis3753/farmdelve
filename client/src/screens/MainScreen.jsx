@@ -16,12 +16,15 @@ const ZONES = [
   { id: 'shelter', label: 'Shelter', col: '13 / 18', row: '6 / 11' },
 ]
 
-function MainScreen({ onEnter }) {
+function MainScreen({ enterError, onEnter }) {
   return (
     <div className="screen">
       <div className="screen-header">
         <h1>FarmDelve</h1>
       </div>
+
+      {/* 던전 입장이 실패했을 때만 보인다. 문구는 App이 만들어 넘긴다. */}
+      {enterError && <p className="hint">{enterError}</p>}
 
       <div className="main-grid">
         {ZONES.map((zone) => (

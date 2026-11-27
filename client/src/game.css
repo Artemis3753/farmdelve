@@ -342,6 +342,12 @@ button.plot:enabled:hover {
   margin-bottom: 12px;
 }
 
+/* 제한 시간을 넘긴 타이머. 넘겨도 클리어는 되지만 보상이 줄어서(골드 절반, 문장 없음) 몬스터와
+   같은 붉은색으로 알린다. */
+.overtime {
+  color: #B4402F;
+}
+
 /* 죽었을 때 나오는 줄. 몬스터와 같은 붉은색으로 알린다. */
 .defeat {
   display: flex;
@@ -352,6 +358,20 @@ button.plot:enabled:hover {
   padding: 12px 16px;
   margin-bottom: 12px;
   color: #B4402F;
+}
+
+/* 클리어했을 때 나오는 줄. 죽었을 때의 줄과 같은 모양에 색만 바꾼다. 다 큰 칸과 같은 "끝났다·받을
+   수 있다" 초록(--ready-*)을 써서 새 색을 늘리지 않는다. 글자는 붉은 줄과 달리 기본색으로 둔다 —
+   초록 변수는 반투명이라 글자에 쓰면 흐려지고, Overtime만 붉게 튀어야 눈에 띈다. */
+.cleared {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid var(--ready-border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: var(--ready-bg);
 }
 
 /* 복도. 가로 칸 수·칸 크기(48px)·틈은 Dungeon.jsx가 인라인 style로 넘긴다 — 이펙트 canvas도
@@ -386,6 +406,38 @@ button.plot:enabled:hover {
   justify-content: center;
   font-family: var(--mono);
   font-size: 13px;
+  /* 칸 위쪽의 체력 막대(.mini-hp)와 구석의 출혈 점이 이 칸을 기준으로 자리를 잡는다. */
+  position: relative;
+}
+
+/* 몬스터·플레이어 칸 위쪽의 작은 체력 막대. 팩 그림(18×4)을 정확히 2배(36×8)로 그린다 — 칸(48px)이
+   그림의 3배 기준이라 3배(54px)는 칸보다 넓고, 정수배가 아니면 픽셀이 뭉개진다. 가로 가운데는
+   left 50%에서 막대 폭의 절반을 빼서 맞춘다(transform을 쓰면 소수 픽셀에 걸릴 수 있다). 바탕은 빈
+   막대 그림이고, 그 위에 .mini-hp-fill이 찬 만큼만 겹친다. 막대를 눌러도 클릭은 칸으로 내려가야
+   대상 선택이 되므로 마우스 입력을 통과시킨다. */
+.mini-hp {
+  position: absolute;
+  top: 2px;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 8px;
+  background: url(/art/LifeBarMiniUnder.png) 0 0 / 36px 8px no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* 찬 부분. 폭(%)은 Dungeon.jsx가 체력 비율로 넘긴다. 그림 크기는 36×8로 고정하고 왼쪽에 붙여서,
+   폭이 줄면 그림이 눌리는 대신 오른쪽이 잘려 나간다. */
+.mini-hp-fill {
+  height: 100%;
+  background: url(/art/LifeBarMiniProgress.png) 0 0 / 36px 8px no-repeat;
+  image-rendering: pixelated;
+}
+
+/* 내 체력 막대는 연두색. 팩에는 빨간 막대 그림뿐이라 색만 돌린다 — 새 그림을 만들지 않아도 테두리와
+   명암 픽셀이 그대로 남는다. */
+.mini-hp-player .mini-hp-fill {
+  filter: hue-rotate(95deg) saturate(1.4) brightness(1.6);
 }
 
 /* 복도 밖. 칸은 자리를 차지한 채 안 보이게만 한다 — 지워버리면 뒤의 칸들이
@@ -421,6 +473,39 @@ button.plot:enabled:hover {
   outline-offset: -3px;
 }
 
+/* Tilling의 균열 3×3. 진짜 그림이 오기 전의 임시 표시라, 다른 범위 표시와 절대 헷갈리지 않는 것이
+   우선이다(2026-11-27 J 요청). 그래서 보라 테두리(Brutal Swing 점선, Whirling Slash 실선)와 겹치지 않는
+   흙빛 주황을 쓰고, 선이 아니라 칸 전체를 빗금으로 채운다.
+
+   - 빗금은 background가 아니라 background-image에 둔다. 그래야 칸 바탕색(플레이어 칸의 연보라 등)이
+     빗금 아래에 그대로 남는다. 반투명이라 밝은·어두운 테마 양쪽에서 바탕이 비친다.
+   - 테두리는 border·outline이 아니라 안쪽 box-shadow다. border는 몬스터 칸의 붉은색이, outline은 대상·
+     스윙·스핀 표시가 이미 쓰고 있어서, 같은 속성을 쓰면 한쪽이 다른 쪽을 지운다. box-shadow는 글자·체력
+     막대·출혈 점보다 아래에 그려져서 위에 놓인 것들을 가리지도 않는다. */
+.tile-rift {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(214, 120, 40, 0.5) 0 4px,
+    rgba(214, 120, 40, 0.18) 4px 8px
+  );
+  box-shadow: inset 0 0 0 3px #D9731F;
+}
+
+/* 균열 안에 몬스터나 플레이어가 서 있는 칸은 빗금을 빼고 옅은 흙빛만 깐다. 어두운 테마에서 빗금의
+   진한 줄 위에 몬스터 글자(붉은색)와 플레이어 아이콘(짙은 초록)이 묻혀 버렸다(2026-11-27 화면 확인).
+   균열이라는 표시는 주황 안쪽 테두리가 그대로 맡는다. */
+.tile-rift.tile-monster,
+.tile-rift.tile-player {
+  background-image: linear-gradient(rgba(214, 120, 40, 0.2), rgba(214, 120, 40, 0.2));
+}
+
+/* 균열과 Brutal Swing·Whirling Slash 범위가 겹친 칸. 보라 선이 원래 자리(-3px)에 있으면 주황 안쪽 테두리
+   (3px) 바로 위에 얹혀 묻혀 버리므로, 테두리 안쪽으로 더 들여서 두 표시가 같이 보이게 한다. */
+.tile-rift.tile-swing,
+.tile-rift.tile-spin {
+  outline-offset: -7px;
+}
+
 /* 자동공격 대상. 몬스터 칸의 붉은 테두리 위에 굵은 바깥선을 하나 더 두른다. */
 .tile-target {
   outline: 3px solid #B4402F;
@@ -429,7 +514,7 @@ button.plot:enabled:hover {
 
 /* 출혈 중인 몬스터. outline은 대상·Brutal Swing·Whirling Slash 표시가 이미 쓰고 있고 한 칸에
    하나만 그려지므로, 겹쳐도 서로 지우지 않게 구석의 점으로 따로 그린다. 구석이라 가운데의
-   이름 글자도 가리지 않는다. */
+   이름 글자도 가리지 않는다. 위쪽은 체력 막대가 차지해서 아래 구석에 둔다. */
 .tile-bleed {
   /* 점을 이 칸의 구석 기준으로 놓으려면 칸이 기준점이 되어야 한다. */
   position: relative;
@@ -439,7 +524,7 @@ button.plot:enabled:hover {
 .tile-bleed::after {
   content: '';
   position: absolute;
-  top: 2px;
+  bottom: 2px;
   right: 2px;
   width: 6px;
   height: 6px;
@@ -450,6 +535,11 @@ button.plot:enabled:hover {
 .tile-icon {
   width: 70%;
   height: 70%;
+}
+
+/* 플레이어 머리 아이콘을 체력 막대 아래로 조금 내린다. 가운데 그대로면 막대(위 2~10px)가 모자 윗부분을 덮는다. */
+.tile-player .tile-icon {
+  margin-top: 8px;
 }
 
 /* 분노 다섯 칸. 자원을 칸으로 세기로 한 결정이 화면에도 그대로 드러난다. */
@@ -473,6 +563,14 @@ button.plot:enabled:hover {
   border-color: #B4402F;
 }
 
+/* 쿨기(5·6번)의 효과가 켜진 칸. 다른 칸의 연보라와 겹치지 않는 금색으로 테두리와 바깥 빛을 둘러서,
+   스킬창을 훑기만 해도 "지금 켜져 있다"가 보이게 한다. box-shadow라 칸 크기가 변하지 않아 줄이 밀리지
+   않는다. */
+.skill-key-active {
+  border-color: #F2B705;
+  box-shadow: 0 0 0 2px #F2B705, 0 0 10px 2px rgba(242, 183, 5, 0.6);
+}
+
 /* 스킬이 놓인 칸과, GCD가 도는 동안 어두워진 칸. */
 .skill-key-bound {
   border-color: var(--accent-border);
@@ -492,6 +590,41 @@ button.plot:enabled:hover {
   border: 1px solid var(--border);
   border-radius: 6px;
   font-family: var(--mono);
+  /* 구석의 키 번호(.skill-key-number)가 이 칸을 기준으로 자리를 잡는다. */
+  position: relative;
+}
+
+/* 스킬 아이콘. 팩 그림이 24×24라 칸(44px, 안쪽 42px)에 들어가는 정수배는 1배뿐이다 — 2배(48px)는 칸보다
+   크다. pixelated는 1배에서는 차이가 없지만, 레티나에서 브라우저가 화소를 늘릴 때 흐리게 메우지 않게 둔다. */
+.skill-icon {
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+}
+
+/* 칸 번호 = 누를 키. 가운데는 아이콘 자리라 오른쪽 위 구석에 작게 둔다(WoW 액션바의 단축키 자리). */
+.skill-key-number {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* 쿨기 칸 가운데의 남은 초. 아이콘 위에 겹치므로 글자에 검은 외곽선(그림자 네 방향)을 둘러서 어떤 색
+   아이콘 위에서도 읽히게 한다. 칸을 눌러도 아무 일이 없지만, 칸에 마우스를 올리면 이름(title)이 떠야
+   하므로 입력은 칸으로 통과시킨다. */
+.skill-key-timer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #FFFFFF;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  pointer-events: none;
 }
 
 .stack-icon {

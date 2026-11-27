@@ -56,6 +56,13 @@ function App() {
   // 겹치지 않는 다섯 번째 이름이다. 앱을 열면 여기서 시작한다.
   const [screen, setScreen] = useState('main')
 
+  // 지금 도는 던전 런. enter 응답 그대로({ runId, tier, startTime, timeLimitSeconds })이고,
+  // 들어가기 전에는 null이다. 던전 문과 Try again 두 입구가 모두 여기를 새 런으로 갈아끼운다.
+  const [run, setRun] = useState(null)
+
+  // 던전 입장이 실패한 이유(서버의 reason이나 네트워크 에러). 메인 화면에 한 줄로 보여 준다.
+  const [enterError, setEnterError] = useState(null)
+
   // 개발 모드(vite)에서는 main.jsx의 StrictMode가 이 effect를 일부러 두 번 실행한다.
   // 쿠키 없이 처음 열면 fetchPlayer 두 개가 동시에 401을 받고 게스트를 둘 만든다 —
   // 서버는 동시 요청을 구분하지 못한다. 쿠키는 나중 것이 남고, 앞 게스트는 주인 없이
@@ -77,6 +84,41 @@ function App() {
   if (!templates || !player) return <div className="screen"><p>Loading...</p></div>
 
   const goHome = () => setScreen('main')
+
+  // 던전 입장. 문을 눌렀을 때와 Try again을 눌렀을 때 둘 다 여기로 온다(2026-11-27).
+  //
+  // effect(화면이 뜨면 보내기)가 아니라 클릭에서 보내는 이유: 입장은 "눌렀기 때문에" 일어나는
+  // 일이다. effect에 두면 개발 모드의 StrictMode가 두 번 돌려서 런이 둘 생기고, 앞의 것은 다음
+  // 입장이 failed로 닫는다. 응답을 받은 뒤에 화면을 바꾸므로 서버의 start_time과 첫 틱도 거의
+  // 같은 순간이 된다.
+  //
+  // 실패하면 어느 입구에서 왔든 메인으로 돌아가 이유를 보여 준다. runId 없이 싸우면 클리어해도
+  // 서버에 알릴 수 없기 때문이다.
+  async function handleEnterDungeon() {
+    setEnterError(null)
+
+    try {
+      // 범위가 1단뿐이라 단수는 1로 고정이다(DoD 2026-11-22).
+      const res = await fetch('/api/dungeon/enter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: 1 }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setEnterError(`Rejected: ${data.reason}`)
+        setScreen('main')
+        return
+      }
+
+      setRun(data)
+      setScreen('dungeon')
+    } catch (err) {
+      setEnterError(`Request failed: ${err.message}`)
+      setScreen('main')
+    }
+  }
 
   if (screen === 'smithy') {
     return (
@@ -113,15 +155,36 @@ function App() {
     )
   }
 
-  // 던전은 몬스터 정의와 팩 구성(templates)만 읽고, 플레이어 상태를 바꾸는
-  // 기능은 아직 없다. 그래서 onPlayerChange를 넘기지 않는다.
-  // 나중에 던전에서 장비를 잃거나 재료를 얻는 기능이 생기면 그때 추가하면 된다.
-  if (screen === 'dungeon') return <Dungeon templates={templates} onLeave={goHome} />
+  // 클리어 보상(골드·Seed Crest)이 플레이어 상태를 바꾸므로 던전도 onPlayerChange를 받는다.
+  if (screen === 'dungeon') {
+    return (
+      <Dungeon
+        templates={templates}
+        run={run}
+        onPlayerChange={setPlayer}
+        onLeave={goHome}
+        onRetry={handleEnterDungeon}
+      />
+    )
+  }
 
 
-  // MainScreen은 눌린 문의 id를 그대로 넘겨준다. 그 id가 곧 화면 이름이라
-  // setScreen을 따로 감싸지 않고 바로 건넨다.
-  return <MainScreen onEnter={setScreen} />
+  // MainScreen은 눌린 문의 id를 그대로 넘겨준다. 그 id가 곧 화면 이름이라 대부분은 바로
+  // setScreen으로 간다. 던전만 서버에 런을 먼저 열어야 해서 handleEnterDungeon을 거친다.
+  // 다른 문을 누르면 지난 입장 실패 문구는 지운다 — 돌아왔을 때 옛 실패가 남아 있지 않게.
+  return (
+    <MainScreen
+      enterError={enterError}
+      onEnter={(id) => {
+        if (id === 'dungeon') {
+          handleEnterDungeon()
+          return
+        }
+        setEnterError(null)
+        setScreen(id)
+      }}
+    />
+  )
 }
 
 export default App
