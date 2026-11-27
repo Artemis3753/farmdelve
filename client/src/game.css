@@ -342,6 +342,12 @@ button.plot:enabled:hover {
   margin-bottom: 12px;
 }
 
+/* 제한 시간을 넘긴 타이머. 넘겨도 클리어는 되지만 보상이 줄어서(골드 절반, 문장 없음) 몬스터와
+   같은 붉은색으로 알린다. */
+.overtime {
+  color: #B4402F;
+}
+
 /* 죽었을 때 나오는 줄. 몬스터와 같은 붉은색으로 알린다. */
 .defeat {
   display: flex;

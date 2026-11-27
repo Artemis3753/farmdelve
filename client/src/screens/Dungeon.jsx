@@ -4,7 +4,7 @@
 // 정하고, 여기는 그 상태를 받아 그리기만 한다. 규칙서는 화면이 몇 칸인지
 // 모른다 — 그래서 "복도의 어느 구간을 보여줄까"(카메라)는 이쪽 일이다.
 //
-// 헤더와 스킬창의 숫자는 아직 자리를 채우는 값이다.
+// 스킬창의 숫자는 아직 자리를 채우는 값이다.
 
 import { useEffect, useReducer, useState } from 'react'
 import Icon from '../components/Icon.jsx'
@@ -67,6 +67,18 @@ const KEY_DIRECTIONS = {
   KeyD: 'right',
 }
 
+// 남은 초 → 헤더의 타이머 문구. 남아 있으면 "4:37", 제한 시간을 넘기면 넘긴 만큼 "+0:12".
+//
+// 남은 쪽은 올림, 넘긴 쪽은 내림이다. 그래야 시작 직후(299.9초 남음)가 "4:59"가 아니라 "5:00"이고,
+// 0을 지나는 순간 "0:01" → "+0:00"으로 끊김 없이 이어진다. 온실의 formatTime(내림만)과 따로 둔 이유다.
+function formatTimer(remainingSeconds) {
+  const over = remainingSeconds < 0
+  const seconds = over ? Math.floor(-remainingSeconds) : Math.ceil(remainingSeconds)
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${over ? '+' : ''}${m}:${String(s).padStart(2, '0')}`
+}
+
 // 한 번의 도전. 죽어서 다시 시작하면 이 컴포넌트를 통째로 새로 만든다(맨 아래 Dungeon).
 // run은 서버가 열어 준 런(App의 handleEnterDungeon)이고, 클리어를 알릴 때 runId를 쓴다.
 function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
@@ -88,22 +100,40 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
     (t) => createInitialState(t.monsters, t.packs),
   )
 
+  // 헤더 타이머의 시계(2026-11-27). 틱 수(state.tick)가 아니라 벽시계(Date.now)로 잰다 —
+  // 브라우저는 백그라운드 탭의 1초 미만 interval을 약 1초로 늘려서, 탭을 내리면 틱이 10배 느려진다.
+  // 리더보드와 시간 초과 판정은 서버 시계라, 틱으로 재면 화면과 서버가 어긋난다.
+  //
+  // 시작 시각을 서버의 startTime이 아니라 이 화면이 뜬 순간으로 잡는 이유: 내 컴퓨터 시계와 서버
+  // 시계는 몇 초씩 어긋날 수 있다. 이 화면은 enter 응답을 받자마자 뜨므로 차이는 응답이 오는 시간뿐이다.
+  const [startedAt] = useState(() => Date.now())
+  const [now, setNow] = useState(startedAt)
+
   // 틱 타이머. 던전 화면이 떠 있는 동안 0.1초마다 "틱이 지났다"고 규칙서에 알린다.
   // 규칙서는 시간을 스스로 재지 않는다 — 이 알람이 울려야만 시간이 흐른다.
+  //
+  // 클리어하거나 죽으면 알람을 끈다. 그러면 now도 더 이상 바뀌지 않아 헤더 타이머가 그 자리에
+  // 멈춘다. 멈춘 시각을 따로 담는 state를 effect에서 고치는 방식은 렌더를 한 번 더 일으켜서
+  // lint(react-hooks/set-state-in-effect)가 막는다. 규칙서도 그 뒤로는 상태를 얼리므로 틱이 없어도
+  // 잃는 것은 없다. 스킬 키로 마지막 몬스터를 잡으면 시계는 직전 틱(최대 0.1초 전)에 멈춘다.
   useEffect(() => {
+    if (state.cleared || state.defeated) return
+
     // setInterval의 간격은 밀리초다. 100을 직접 적지 않고 초당 틱 수에서 계산해서,
-    // 틱 길이를 바꿀 때 이 줄이 따라오게 한다.
+    // 틱 길이를 바꿀 때 이 줄이 따라오게 한다. 같은 콜백 안의 두 갱신은 React가 묶어서
+    // 렌더는 한 번만 일어난다.
     const id = setInterval(() => {
       dispatch({ type: 'tick' })
+      setNow(Date.now())
     }, 1000 / TICKS_PER_SECOND)
 
     // 화면을 떠날 때(Abandon run) 알람을 끈다. StrictMode(main.jsx)가 개발 중에
     // "등록 → 정리 → 다시 등록"을 일부러 해서, 여기가 빠지면 알람이 두 개가 되어
     // 캐릭터가 두 배 빨리 걷는다.
     return () => clearInterval(id)
-    // 빈 배열 = 화면이 뜰 때 한 번만 등록. dispatch는 React가 렌더마다 바뀌지 않게
-    // 보장하는 함수라 목록에 넣을 필요가 없다.
-  }, [])
+    // 화면이 뜰 때 한 번 등록하고, 끝났을 때 한 번 더 돌아 정리만 하고 빠진다. dispatch와 setNow는
+    // React가 렌더마다 바뀌지 않게 보장하는 함수라 목록에 넣을 필요가 없다.
+  }, [state.cleared, state.defeated])
 
   // 키 입력. 키를 누르면 "그 방향으로 가기 시작"(moveStart), 떼면 "멈춤"(moveStop)을
   // 규칙서에 알리기만 한다. 실제로 걷는 것은 위의 틱이다.
@@ -208,6 +238,14 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
     // 읽는 값을 빠짐없이 적는 규칙 때문이고, 실제로 다시 돌게 만드는 건 cleared 하나다.
   }, [state.cleared, run.runId, onPlayerChange])
 
+  // 헤더 숫자. 둘 다 이미 있는 값에서 계산하고 따로 담지 않는다 — 담으면 원래 값과 어긋날 수 있다.
+  // 남은 초는 서버가 enter 때 준 제한 시간(1단 300초)에서 흐른 시간을 뺀 값이다.
+  const remainingSeconds = run.timeLimitSeconds - (now - startedAt) / 1000
+  // 전체 마릿수는 규칙서가 몬스터를 세운 재료(팩 구성)와 같은 곳에서 센다. 죽은 몬스터는 규칙서가
+  // 배열에서 빼므로, 처치 수는 전체에서 남은 수를 뺀 것이다.
+  const totalMonsters = templates.packs.reduce((sum, pack) => sum + pack.amount, 0)
+  const killed = totalMonsters - state.monsters.length
+
   const templateOf = (monster) =>
     templates.monsters.find((t) => t.monsterTemplateId === monster.monsterTemplateId)
   const nameOf = (monster) => templateOf(monster).name
@@ -281,9 +319,9 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
       </div>
 
       <section className="dungeon-header">
-        <span>Tier 1</span>
-        <span>10:00</span>
-        <span>Pulls 0 / 5</span>
+        <span>Tier {run.tier}</span>
+        <span className={remainingSeconds < 0 ? 'overtime' : undefined}>{formatTimer(remainingSeconds)}</span>
+        <span>Kills {killed} / {totalMonsters}</span>
         <span>HP {state.playerHp} / {state.playerMaxHp}</span>
       </section>
 
