@@ -12,7 +12,7 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   player's auto-attack, targets and kills (seam E), skills, Rage and the GCD
   (seam F), and the Whirling Slash channel (seam G, split from F because it adds a
   timed state, `channel`), and the Whirling Slash bleed (seam H, a second timed state,
-  `bleed` on each monster), and the dungeon clear (seam J, 2026-11-27). The screen (`Dungeon.jsx`) is not a seam: it is a thin
+  `bleed` on each monster), the dungeon clear (seam J, 2026-11-27), out-of-combat regen (seam K, 2026-11-27), and the two cooldowns, Market Price Rage and Tilling (seam L, 2026-11-27). The screen (`Dungeon.jsx`) is not a seam: it is a thin
   layer that dispatches actions and draws the state, and it was checked by hand in
   the browser.
 - **Every case below except H13–H15 was approved by the author** before it was written, in ten
@@ -32,6 +32,17 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   tick the new rule adds), because they cast Whirling Slash on a target in range.
 - **J1–J5 were approved by the author** on 2026-11-27, together with the clear rules
   below.
+- **K1–K5 were approved by the author** on 2026-11-27, together with the regen rules
+  below. Adding regen broke one assertion in G6 ("no heal if no tick connected"), which
+  used an empty corridor: with no monster at all the player is out of combat and regen
+  stepped in. Claude moved it to a corridor with one aggroed monster 25 tiles away, so
+  the player stays in combat and the assertion checks the channel alone again. The
+  author has not reviewed that edit yet.
+- **L1–L10 were approved by the author** on 2026-11-27, together with the cooldown rules
+  below. Claude also added the two new state fields to A5 and the cooldown paths (and a
+  state with both effects on) to B7, as earlier slices did, and gave L7 one more
+  assertion, "an expired rift no longer counts", after the mutation check found that gap.
+  The author has not reviewed those three edits yet.
 - **The test code was written by Claude** from that list.
 - **The rule changes were decided by the author**: a key press steps at once, the
   aggro rules, the attack rules, and the targeting rules below. Claude changed
@@ -102,7 +113,8 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   in one burst.
 - **The swing timer keeps running out of range.** A monster that just swung and
   catches up again still waits out its interval.
-- **Player health is 1000** (provisional, from the backlog). It stops at 0, and the
+- **Player health is 2000** (provisional; the backlog said 1000, raised on 2026-11-27 after the
+  first hand-played 22-monster run died). It stops at 0, and the
   player is defeated. After that nothing moves, attacks or ticks, and the screen shows
   "Try again" with no penalty, as the backlog's Definition of Done says.
 - Compared with WoW, from the Warcraft Wiki: auto-attacks run on an internal swing
@@ -195,7 +207,7 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   held and needs at least 1c. It needs no target and no range check, and it starts even
   with nobody in range. It channels for 0.7 s per point (7 ticks) and ticks every 0.7 s,
   so `n` points are exactly `n` ticks. Each tick hits every enemy within range 1,
-  diagonals included, with no cap, for 40 before armor, and the range is checked again on
+  diagonals included, with no cap, for 90 before armor (40 until 2026-11-27), and the range is checked again on
   every tick: walking out of range wastes the tick, walking back resumes it. The player may
   walk during the channel and the auto-attack keeps swinging. The channel cannot be
   interrupted. When it ends, if at least one tick connected, the player heals 20 (never
@@ -262,6 +274,55 @@ screen can watch, the same way it watches `defeated`.
 - A new fight is not cleared, even an empty corridor with no monsters: the movement tests
   use one.
 
+## Out-of-combat regen rules (decided 2026-11-27)
+
+The backlog set out-of-combat regeneration on 2026-09-30 at 20% per second, and it was
+never built. The first hand-played 22-monster run showed why it is needed: with no
+healing, damage only piles up. The author chose it over a heal-on-kill skill, the
+potion, or plain number changes.
+
+- **Out of combat** (the author's choice): no aggroed monster is alive. Sleeping packs
+  do not count. Aggro never drops until a monster dies, so this needs no new state.
+- **Rate** (the author's choice, against the backlog's 20%): 5% of maximum health per
+  second, 10 a tick at 2000. It matches WoW's Recuperate (150% over 30 s). At 20% the
+  walk between packs refilled health, so resting was never a choice; at 5% it costs run
+  time, which the fastest-clear leaderboard makes a real trade.
+- **When it starts** (the author's choice): on the next tick, with no delay.
+- **Where in the tick:** right after aggro is pulled and before anything that kills. So a
+  pack woken this tick stops regen this tick, and the tick a last monster dies does not
+  regen yet; the next one does.
+- **No events** (the author's choice): a +10 every tick would clutter the screen.
+- Names (the author's): `REST_HEAL_PER_SECOND`, `regenStep`.
+
+## Cooldown rules (decided 2026-11-27)
+
+The spec note lists two cooldowns, Market Price Rage (5) and Tilling (6). The author chose
+to build them before any balancing, since tuning an incomplete kit would be undone the day
+the rest arrived.
+
+- **Values** (from the spec note): Market Price Rage, +20% for 15 s, 60 s cooldown;
+  Tilling, a rift for 15 s, 30 s cooldown, +10% damage taken inside it.
+- **"Attack power +20%" is read as all player damage +20%.** Only the auto-attack uses
+  attack power today; the skills deal fixed amounts, so the literal reading would boost
+  auto-attacks alone.
+- **No GCD** (the author's choice): neither uses the GCD, and both work during a channel.
+  WoW took its burst cooldowns off the GCD in Shadowlands, because spending a GCD only to
+  boost later presses felt bad.
+- **Bleeds** (the author's choice): the multiplier is read when a bleed tick lands, not
+  when the bleed is applied, as in WoW since 2014 (no snapshots).
+- **Stacking** (the author's choice): multipliers from the two sources multiply,
+  1.2 × 1.1 = 1.32. Whether WoW adds or multiplies here was not confirmed.
+- **The rift** (the author's choice): fixed on the tile the player stood on, covering
+  range 1 around it. A monster is checked where it stands when the damage lands.
+- **Rounding** (Claude's choice): the multiplier goes in with armor, and the result is
+  rounded once at the end.
+- Both are ready at the start of a fight. An effect is on while the tick is below its end
+  tick, so damage on the end tick itself is not boosted.
+- Names: the state shape (an object per skill: `marketPriceRage`, `tilling`),
+  `damageMultiplier` and `inRift` are the author's; `COOLDOWN_SKILLS`, `castCooldown`,
+  `MARKET_PRICE_RAGE_MULTIPLIER`, `TILLING_MULTIPLIER` and `RIFT_RADIUS` are Claude's and
+  not reviewed yet.
+
 ## Cases
 
 ### A. Initial layout — `createInitialState`
@@ -272,7 +333,7 @@ screen can watch, the same way it watches `defeated`.
 | A2 | A pack of four fills four different tiles inside the corridor | Two monsters on one tile would hide one on screen and break hit checks | The exact formation shape |
 | A3 | A second row in the same pack continues after the first row | Swarm and elite rows share a pack; restarting the slot count stacks them | Rows of different packs interleaved in the input |
 | A4 | Packs 1 and 2 start at their own x; ids are unique | Ids tell two identical monsters apart; a pack must not inherit the previous pack's slot count | The real `/api/templates` response shape |
-| A5 | The player starts at (0, 4) facing right, with 1000 of 1000 hp, not defeated, with no target, no Rage, no GCD running and nothing remembered | The first fight depends on the walking distance from the start and on the health pool | Anything about rendering |
+| A5 | The player starts at (0, 4) facing right, with 2000 of 2000 hp, not defeated, with no target, no Rage, no GCD running and nothing remembered | The first fight depends on the walking distance from the start and on the health pool | Anything about rendering |
 
 ### B. Movement — `combatReducer`
 
@@ -305,7 +366,7 @@ screen can watch, the same way it watches `defeated`.
 
 | ID | Behavior | Why it is needed | What it does not catch |
 |----|----------|------------------|------------------------|
-| D1 | A monster hits the tick it reaches range, and not before (hp 1000 at tick 19, 990 at tick 20) | Pins "first swing on contact" and that range 1 is what counts | Whether an immediate first hit feels fair |
+| D1 | A monster hits the tick it reaches range, and not before (hp 2000 at tick 19, 1990 at tick 20) | Pins "first swing on contact" and that range 1 is what counts | Whether an immediate first hit feels fair |
 | D2 | After the first hit it hits every 20 ticks (990, 980 at tick 21, 970 at tick 41) | The backlog's damage budget assumes one hit per 2 seconds per monster | — |
 | D3 | Each monster hits for its own damage (a 10 and a 20 together take 30) | Elites hit harder than swarm monsters | Damage reduction on the player, which does not exist yet |
 | D4 | Arriving does not reset the swing timer: a monster that just swung waits out its interval | Without it, running away and back would dodge or refresh hits | — |
@@ -361,11 +422,11 @@ screen can watch, the same way it watches `defeated`.
 
 | ID | Behavior | Why it is needed | What it does not catch |
 |----|----------|------------------|------------------------|
-| G1 | 3c spends all the Rage, deals nothing at once, then 40 at ticks 7, 14 and 21 and stops | The tick schedule is the skill: one tick per point, 0.7 s apart | — |
-| G2 | 1c to 5c deal 40, 80, 120, 160, 200 in total; 5c has four ticks done at tick 34 and five at tick 35 | Duration and tick count must both scale with the points | Whether 40 per tick is a good number |
+| G1 | 3c spends all the Rage, deals nothing at once, then 90 at ticks 7, 14 and 21 and stops | The tick schedule is the skill: one tick per point, 0.7 s apart | — |
+| G2 | 1c to 5c deal 90, 180, 270, 360, 450 in total; 5c has four ticks done at tick 34 and five at tick 35 | Duration and tick count must both scale with the points | Whether 90 per tick is a good number |
 | G3 | The range is checked on every tick: a tick spent out of range is lost, and coming back resumes (two of three ticks hit) | The spec says walking away wastes ticks and walking back resumes them, with no separate rule | — |
 | G4 | Every enemy within range 1 is hit, diagonals included, with no cap (eight around the player), and one at range 2 is not | "Every enemy in range 1" is the area; the ring is full, so the outer enemy cannot walk in | — |
-| G5 | Armor cuts each tick and it is rounded: 250 gives 32, 100 gives 36, 300 gives 31 | Ticks share the one armor rule (the bleed will ignore it later) | The bleed |
+| G5 | Armor cuts each tick and it is rounded: 250 gives 72, 100 gives 82, 300 gives 69 | Ticks share the one armor rule (the bleed will ignore it later) | The bleed |
 | G6 | On completion it heals 20 if any tick connected, never past full health, not before the end, and not if no tick connected; one early tick is enough | The spec: the heal lands only if at least one tick connected | Whether 20 is a good number |
 | G7 | It starts even with nobody in range (Rage spent, GCD held 35 ticks); under 1c nothing happens; 2.5c spends 2c, leaves 0.5c and ticks twice | An empty channel is the cost of bad positioning; the usual spender rules | — |
 | G8 | The channel holds the GCD to its end: an early press is dropped, one in the last 3 ticks fires after the final tick, 1c holds 10 ticks not 7, and a remembered second Whirling Slash starts after the first one finishes | "Other skills not pressed during the channel" comes out of the GCD; the order of the last tick and the remembered skill matters | — |
@@ -383,8 +444,8 @@ the bleed ticks (their comments say how many).
 |----|----------|------------------|------------------------|
 | H1 | Pressing with the target in range puts a bleed on it, timed from the tick of the press (1c at tick 0: ends 60, first tick 20; pressed at tick 3: 63 and 23) | The bleed is state with its own clock | — |
 | H2 | The duration is 4 s plus 2 s per point: 1c 6 s, 3c 10 s, 5c 14 s | The author chose that more Rage means a longer bleed | Whether these numbers are good |
-| H3 | 50 every 20 ticks, the last tick lands on the end, then the bleed is null and nothing more is dealt (5c: 200 + 350 in total) | Schedule and expiry | — |
-| H4 | The bleed ignores armor while the channel tick beside it does not (armor 500: 27 + 3 × 50) | Backlog: bleeds ignore armor | — |
+| H3 | 50 every 20 ticks, the last tick lands on the end, then the bleed is null and nothing more is dealt (5c: 450 + 350 in total) | Schedule and expiry | — |
+| H4 | The bleed ignores armor while the channel tick beside it does not (armor 500: 60 + 3 × 50) | Backlog: bleeds ignore armor | — |
 | H5 | Only the selected target is bled, even if others stand in range | The bleed goes to the primary target | — |
 | H6 | No target, a target at distance 4 or 2, or a far target with another enemy near: nobody is bled and the channel still runs | The skill needs no target, the bleed does | — |
 | H7 | After it is applied, the bleed keeps ticking when the target leaves the range | Range is checked only when applied | Whether that feels right to play |
@@ -408,7 +469,7 @@ the bleed ticks (their comments say how many).
 | I5 | A skill pressed between ticks records cast then damage; another action (walking) does not clear them, the next tick does | Key-press events must survive until drawn | Whether React really draws between actions |
 | I6 | A Brutal Swing that hits no one records only the cast; a skill that cannot go (no target, out of range, no Rage) leaves the state unchanged | The whiff is still drawn; a failed press draws nothing | — |
 | I7 | Brutal Swing and each Whirling Slash tick record one damage event per enemy hit; the channel press records only the cast | One effect per enemy | — |
-| I8 | A bleed tick records damage from the player with ability `bleed`, ignoring armor (50 beside a channel tick of 32) | The bleed has its own effect | — |
+| I8 | A bleed tick records damage from the player with ability `bleed`, ignoring armor (50 beside a channel tick of 72) | The bleed has its own effect | — |
 | I9 | A kill records death right after the damage, by a hit or by a bleed; `amount` is not cut down to the health left | The death effect follows the hit | — |
 | I10 | The Whirling Slash heal records the amount actually restored (20, or 10 from 990) after the tick's damage, and nothing at full health | No "+0" on screen | — |
 | I11 | A player killed by a monster records death after the damage | The defeat effect | — |
@@ -423,6 +484,31 @@ the bleed ticks (their comments say how many).
 | J3 | A bleed tick that kills the last monster clears the run; killing one of two does not | The `bleedStep` path | — |
 | J4 | A skill key that kills the last monster clears the run at once, with no tick | The key-press path | — |
 | J5 | Once cleared, a tick, moving, selecting and a skill all return the same object | Nothing may happen after the clear | — |
+
+### K. Out-of-combat regen — `combatReducer`, `tick`
+
+| ID | Behavior | Why it is needed | What it does not catch |
+|----|----------|------------------|------------------------|
+| K1 | With only sleeping monsters, health rises by 10 a tick (100 a second) | That regen happens, at the right amount, and that sleeping packs do not block it | Whether 5% feels right in a real run |
+| K2 | While one aggroed monster is alive, health does not rise, even out of its reach | The out-of-combat test is aggro, not distance | — |
+| K3 | Health stops at the maximum | Regen never overfills | — |
+| K4 | On the tick a pack wakes up, health does not rise | Regen comes after aggro is pulled, not before | — |
+| K5 | On the tick the last aggroed monster dies, health does not rise; it rises from the next tick | Regen comes before the steps that kill, not after | — |
+
+### L. Cooldowns — `combatReducer`, `useSkill`
+
+| ID | Behavior | Why it is needed | What it does not catch |
+|----|----------|------------------|------------------------|
+| L1 | A new fight starts with both cooldowns ready and neither effect on | The starting point | — |
+| L2 | Market Price Rage lasts 150 ticks with a 600-tick cooldown, works during the GCD and a channel without touching either, and is ignored on cooldown | The off-GCD rule and the cooldown | — |
+| L3 | With it on, the auto-attack hits 48 and Furious Thrust 96; through 250 armor, 77 | The multiplier reaches every hit, armor still applies | — |
+| L4 | A bleed tick with it on deals 60; after it ends, the same bleed deals 50 | No snapshot: the tick reads the buff when it lands | — |
+| L5 | Damage on the end tick is not boosted | The boundary | — |
+| L6 | Tilling fixes a rift on the player's tile for 150 ticks with a 300-tick cooldown, without the GCD | Where the rift goes, and its timing | — |
+| L7 | Only a monster inside the rift takes 10% more; the rift stays when the player walks off; an expired rift no longer counts | The rift is fixed, sized and timed | — |
+| L8 | Brutal Swing, a channel tick and a bleed tick each check the rift per monster | Every damage path reads the rift | — |
+| L9 | With both on, 106, or 84 through 250 armor | Multiply, and round once at the end | — |
+| L10 | Each cooldown records a cast; one pressed on cooldown records nothing | The screen can draw the cast | — |
 
 ## Movement rule change (2026-11-17)
 
@@ -638,8 +724,8 @@ Added with Whirling Slash (38 new rows):
 | The channel skill goes through the single-target path | G1–G12 |
 | Tick interval 0.7 s → 0.5 s | G1, G2, G6, G7, G8, G11, G12 |
 | Tick interval 0.7 s → 0.8 s | G1–G10, G12 |
-| Damage per tick 40 → 41 | G1–G5, G7, G8, G9, G12 |
-| Damage per tick 40 → 80 | G1–G5, G7, G8, G9, G12 |
+| Damage per tick 90 → 91 (re-run 2026-11-27, when the tick rose from 40) | G1–G5, G7, G8, G9, G12, H3–H6, H8, H9, I7, I8, I10, L8 |
+| Damage per tick 90 → 180 (re-run 2026-11-27) | G1–G5, G7, G8, G9, G12, H3–H6, H8–H10, I7–I10, L8 |
 | Completion heal 20 → 21 | G6 |
 | Completion heal 20 → 0 | G6 |
 | Usable with 0 points | G7 |
@@ -770,6 +856,40 @@ Dungeon clear (2026-11-27):
 | The bleed step drops the clear check | J3 |
 | The reducer keeps running after a clear | J5 |
 
+Out-of-combat regen (2026-11-27), all seven caught:
+
+| Breakage | Caught by |
+|----------|-----------|
+| No regen at all | K1, K3, K5 |
+| Regen even in combat | K2, K4, K5, and 12 tests in D–I that take damage |
+| Any monster, even asleep, blocks regen | K1, K3, K5 |
+| No cap at maximum health | K3 |
+| A second's worth healed every tick | K1, K5 |
+| Regen before aggro is pulled | K4, D5, D6, E9 |
+| Regen after the steps that kill | K5, H11 |
+
+Cooldowns (2026-11-27). On the first run 15 of 16 were caught; "an expired rift still
+counts" survived, and L7 gained the assertion that closes it. All 16 are caught now:
+
+| Breakage | Caught by |
+|----------|-----------|
+| Market Price Rage never boosts | L3, L4, L5, L9 |
+| The buff is still on at its end tick | L5, L7, L8, and 20 tests in F and I |
+| The rift boosts every monster while on | L7, L8 |
+| An expired rift still counts | L7 |
+| The rift follows the player | L7, L8 |
+| Rift radius 2 | L7, L8 |
+| The multipliers add | L9 |
+| Rounded before armor | L9 |
+| Bleed ticks ignore the multiplier | L4, L8 |
+| The cooldown is never checked | L2, L6, L10 |
+| A cooldown starts the GCD | L2, L3, L6, L7, L9 |
+| Cooldowns wait for the GCD | L2 |
+| No cast event | L10 |
+| Tilling's cooldown is 60 s | L6 |
+| The rift is not placed on the player | L6, L7, L9 |
+| The buff lasts 10 s | L2, L5 |
+
 The 40th breakage removed the line that stopped a bleed from ticking once its next tick time
 is past its end. It survived because the line could never matter: when the next tick time is
 past the end, the bleed has already been removed at the end tick. The line was deleted as dead
@@ -857,12 +977,11 @@ scrolls, and a high-density display.
 - Ranged monsters hold their ground while they can reach the player. Today they chase
   and hit like melee monsters, a temporary stand-in.
 - The rest of the skill kit: the tier 2 talent that spreads the bleed to a second target,
-  the two cooldowns, Sprint, and key rebinding. The tier 1 talent that widens Brutal Swing to
+  Sprint, and key rebinding. The tier 1 talent that widens Brutal Swing to
   three rows.
 - The talents that change Overhead Slam (tier 3a refund, tier 5a crit and 5b bleed bonus)
   and the Slam's interaction with Market Price Rage.
-- The elite and ranged mechanics (spin, pools, volley), and the out-of-combat health
-  regeneration in the backlog.
+- The elite and ranged mechanics (spin, pools, volley).
 - Run goals: clearing packs, the boss, rewards and the timer.
 - The effect layer (`EffectLayer.jsx`) has no automated tests. Its "draw only a higher `seq`"
   rule and the last-known position of a dead monster were checked only by hand (below).
