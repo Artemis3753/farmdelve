@@ -45,6 +45,36 @@ const SKILL_LABELS = {
   whirlingSlash: 'Whirling Slash',
 }
 
+// 스킬 id → 그림 팩(Ninja Adventure, CC0)의 아이콘 파일 이름. 확장자와 "Disabled"를 붙이지 않은
+// 이름만 적는다 — 팩이 회색판을 "<이름>Disabled.png"로 같은 폴더에 두어서, 쓸 수 없을 때는 이름 뒤에
+// 붙이기만 하면 된다. 파일은 client/public/art/에 원래 이름 그대로 복사해 두었고, Vite가 public/을
+// 사이트 맨 위(/)에 그대로 내주므로 "/art/<이름>.png"로 부른다.
+const SKILL_ICONS = {
+  furiousThrust: 'AttackUpgrade',
+  brutalSwing: 'Harvest',
+  overheadSlam: 'Mine',
+  whirlingSlash: 'Shuriken',
+}
+
+// 체력 → 막대가 찰 비율(0~100%). 최대치는 부르는 쪽이 넘긴다 — 몬스터는 템플릿, 플레이어는 상태에
+// 있어서 사는 곳이 다르다. 0과 100 사이로 자르는 것은 규칙이 바뀌어 체력이 잠깐 음수나 최대치를
+// 넘더라도 막대가 틀 밖으로 삐져나가지 않게 하려는 안전장치다.
+function hpPercent(hp, max) {
+  return Math.min(100, Math.max(0, (hp / max) * 100))
+}
+
+// 칸 위쪽의 작은 체력 막대. 바탕(빈 막대)을 깔고 그 위에 빨간 막대를 비율만큼만 보이게 잘라 얹는다.
+// 빨간 막대를 줄여 그리지 않고 "잘라서" 보이는 폭만 바꾸는 이유: 그림을 가로로 눌러 버리면 픽셀이
+// 정수배가 아니게 되어 뭉개지고, 오른쪽 끝의 테두리 픽셀까지 같이 줄어든다. 잘라 내면 그림은 늘 같은
+// 2배 크기 그대로이고 끝만 가려진다. 크기와 그림은 game.css가 맡고, 여기는 비율만 넘긴다.
+function MiniHpBar({ hp, max, player = false }) {
+  return (
+    <div className={player ? 'mini-hp mini-hp-player' : 'mini-hp'}>
+      <div className="mini-hp-fill" style={{ width: `${hpPercent(hp, max)}%` }} />
+    </div>
+  )
+}
+
 // 키 → 스킬 id. 방향 키와 같은 이유로 event.code(Digit1)를 쓴다. 키 재설정은 이 표를 바꾸는
 // 방식으로 붙일 수 있다(칸 번호와 키를 하나로 묶지 않은 까닭이다).
 // 분노를 쓰는 스킬. 1c도 없으면 눌러도 나가지 않아서 슬롯을 어둡게 한다.
@@ -324,6 +354,12 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
           {isPlayer && <Icon of="head" className="tile-icon" />}
           {/* 몬스터 아이콘은 아직 없다. 이름 첫 글자(F·T·B·S)로 구분한다. */}
           {monster && <span title={nameOf(monster)}>{nameOf(monster)[0]}</span>}
+          {/* 체력 막대는 대상으로 고른 몬스터만이 아니라 모두에게 단다 — 헤더의 Target 줄은 한 마리만
+              보여 주므로, 범위 스킬로 여럿을 때릴 때 누가 먼저 쓰러질지는 막대로만 보인다. 최대치는
+              상태에 없고 템플릿에 있다(상태의 hp는 지금 남은 값). */}
+          {monster && <MiniHpBar hp={monster.hp} max={templateOf(monster).hp} />}
+          {/* 내 막대는 연두색이다 — 몬스터와 같은 빨강이면 붙어 싸울 때 어느 쪽이 내 체력인지 한눈에 안 갈린다. */}
+          {isPlayer && <MiniHpBar hp={state.playerHp} max={state.playerMaxHp} player />}
         </div>,
       )
     }
@@ -350,7 +386,7 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
         <span>
           {target
             ? `Target: ${nameOf(target)} ${target.hp} / ${templateOf(target).hp}`
-            : 'No target — click a monster'}
+            : 'No target'}
         </span>
       </section>
 
@@ -431,19 +467,29 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
             if (skill) className += ' skill-key-bound'
             if (skill && state.gcdReadyTick - state.tick > QUEUE_WINDOW_TICKS) className += ' skill-key-gcd'
             // 스펜더는 분노가 1c도 없으면 눌러도 나가지 않으므로, GCD와 상관없이 어둡게 한다.
-            if (SPENDER_SKILLS.includes(skill) && state.rage < RAGE_PER_POINT) className += ' skill-key-gcd'
+            // 이때는 아이콘도 팩의 회색판으로 바꾼다. 어둡게 하는 것(opacity)은 GCD와 같은 표시라
+            // "곧 밝아진다"로 읽히지만, 회색은 "분노가 모자라 지금은 못 쓴다"는 다른 이유를 보여 준다.
+            const noRage = SPENDER_SKILLS.includes(skill) && state.rage < RAGE_PER_POINT
+            if (noRage) className += ' skill-key-gcd'
 
             return (
               <li key={n} className={className} title={skill ? SKILL_LABELS[skill] : undefined}>
-                {n}
+                {/* alt는 비운다. 이름은 칸의 title이 이미 알려 주고, 그림이 안 뜰 때 이름이 칸 안에
+                    글자로 튀어나오면 칸이 깨진다. */}
+                {skill && (
+                  <img
+                    className="skill-icon"
+                    src={`/art/${SKILL_ICONS[skill]}${noRage ? 'Disabled' : ''}.png`}
+                    alt=""
+                  />
+                )}
+                {/* 칸 번호 = 누를 키. 아이콘이 칸 가운데를 차지해서 구석에 작게 둔다. */}
+                <span className="skill-key-number">{n}</span>
               </li>
             )
           })}
         </ul>
 
-        <div className="placeholder">
-          Skills, consumables, and key rebinding come with the combat slice.
-        </div>
       </section>
     </div>
   )

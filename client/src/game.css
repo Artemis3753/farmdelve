@@ -406,6 +406,38 @@ button.plot:enabled:hover {
   justify-content: center;
   font-family: var(--mono);
   font-size: 13px;
+  /* 칸 위쪽의 체력 막대(.mini-hp)와 구석의 출혈 점이 이 칸을 기준으로 자리를 잡는다. */
+  position: relative;
+}
+
+/* 몬스터·플레이어 칸 위쪽의 작은 체력 막대. 팩 그림(18×4)을 정확히 2배(36×8)로 그린다 — 칸(48px)이
+   그림의 3배 기준이라 3배(54px)는 칸보다 넓고, 정수배가 아니면 픽셀이 뭉개진다. 가로 가운데는
+   left 50%에서 막대 폭의 절반을 빼서 맞춘다(transform을 쓰면 소수 픽셀에 걸릴 수 있다). 바탕은 빈
+   막대 그림이고, 그 위에 .mini-hp-fill이 찬 만큼만 겹친다. 막대를 눌러도 클릭은 칸으로 내려가야
+   대상 선택이 되므로 마우스 입력을 통과시킨다. */
+.mini-hp {
+  position: absolute;
+  top: 2px;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 8px;
+  background: url(/art/LifeBarMiniUnder.png) 0 0 / 36px 8px no-repeat;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+/* 찬 부분. 폭(%)은 Dungeon.jsx가 체력 비율로 넘긴다. 그림 크기는 36×8로 고정하고 왼쪽에 붙여서,
+   폭이 줄면 그림이 눌리는 대신 오른쪽이 잘려 나간다. */
+.mini-hp-fill {
+  height: 100%;
+  background: url(/art/LifeBarMiniProgress.png) 0 0 / 36px 8px no-repeat;
+  image-rendering: pixelated;
+}
+
+/* 내 체력 막대는 연두색. 팩에는 빨간 막대 그림뿐이라 색만 돌린다 — 새 그림을 만들지 않아도 테두리와
+   명암 픽셀이 그대로 남는다. */
+.mini-hp-player .mini-hp-fill {
+  filter: hue-rotate(95deg) saturate(1.4) brightness(1.6);
 }
 
 /* 복도 밖. 칸은 자리를 차지한 채 안 보이게만 한다 — 지워버리면 뒤의 칸들이
@@ -449,7 +481,7 @@ button.plot:enabled:hover {
 
 /* 출혈 중인 몬스터. outline은 대상·Brutal Swing·Whirling Slash 표시가 이미 쓰고 있고 한 칸에
    하나만 그려지므로, 겹쳐도 서로 지우지 않게 구석의 점으로 따로 그린다. 구석이라 가운데의
-   이름 글자도 가리지 않는다. */
+   이름 글자도 가리지 않는다. 위쪽은 체력 막대가 차지해서 아래 구석에 둔다. */
 .tile-bleed {
   /* 점을 이 칸의 구석 기준으로 놓으려면 칸이 기준점이 되어야 한다. */
   position: relative;
@@ -459,7 +491,7 @@ button.plot:enabled:hover {
 .tile-bleed::after {
   content: '';
   position: absolute;
-  top: 2px;
+  bottom: 2px;
   right: 2px;
   width: 6px;
   height: 6px;
@@ -470,6 +502,11 @@ button.plot:enabled:hover {
 .tile-icon {
   width: 70%;
   height: 70%;
+}
+
+/* 플레이어 머리 아이콘을 체력 막대 아래로 조금 내린다. 가운데 그대로면 막대(위 2~10px)가 모자 윗부분을 덮는다. */
+.tile-player .tile-icon {
+  margin-top: 8px;
 }
 
 /* 분노 다섯 칸. 자원을 칸으로 세기로 한 결정이 화면에도 그대로 드러난다. */
@@ -512,6 +549,25 @@ button.plot:enabled:hover {
   border: 1px solid var(--border);
   border-radius: 6px;
   font-family: var(--mono);
+  /* 구석의 키 번호(.skill-key-number)가 이 칸을 기준으로 자리를 잡는다. */
+  position: relative;
+}
+
+/* 스킬 아이콘. 팩 그림이 24×24라 칸(44px, 안쪽 42px)에 들어가는 정수배는 1배뿐이다 — 2배(48px)는 칸보다
+   크다. pixelated는 1배에서는 차이가 없지만, 레티나에서 브라우저가 화소를 늘릴 때 흐리게 메우지 않게 둔다. */
+.skill-icon {
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+}
+
+/* 칸 번호 = 누를 키. 가운데는 아이콘 자리라 오른쪽 위 구석에 작게 둔다(WoW 액션바의 단축키 자리). */
+.skill-key-number {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 10px;
+  line-height: 1;
 }
 
 .stack-icon {
