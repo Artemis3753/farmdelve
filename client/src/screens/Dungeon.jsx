@@ -194,6 +194,10 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
   // complete 요청이 실패한 이유. 보상은 서버가 주므로, 실패하면 받지 못했다는 걸 알려야 한다.
   const [completeError, setCompleteError] = useState(null)
 
+  // complete 응답 그대로. 클리어 줄의 보상 숫자는 gained(이번에 늘어난 양)에서 읽는다 — 보상 규칙은
+  // 서버에만 있으므로, 화면이 100이나 5를 따로 알면 규칙이 두 곳에 생긴다. null이면 아직 응답 전이다.
+  const [clearResult, setClearResult] = useState(null)
+
   // 마지막 몬스터가 죽으면(state.cleared) 서버에 클리어를 알리고 보상을 받는다.
   //
   // 입장과 달리 effect에 두는 이유: 클리어는 클릭이 아니라 틱이 만든 상태 변화라서, "이 값이
@@ -228,6 +232,7 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
           highestTierCleared: data.highestTierCleared,
           stacks: data.stacks.reduce((stacks, updated) => mergeStack(stacks, updated), prev.stacks),
         }))
+        setClearResult(data)
       } catch (err) {
         setCompleteError(`Request failed: ${err.message}`)
       }
@@ -245,6 +250,19 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
   // 배열에서 빼므로, 처치 수는 전체에서 남은 수를 뺀 것이다.
   const totalMonsters = templates.packs.reduce((sum, pack) => sum + pack.amount, 0)
   const killed = totalMonsters - state.monsters.length
+
+  // 클리어는 했지만 서버가 아직 기록하지 않은 동안. 이때는 Run again과 헤더의 Leave를 둘 다 막는다 —
+  // 서버는 새 런에 들어갈 때 열려 있는 런을 failed로 닫으므로, complete가 도착하기 전에 다시 들어가면
+  // 클리어한 런이 실패로 닫혀 보상이 사라질 수 있다. 응답이 오거나(clearResult) 실패하면(completeError)
+  // 더 기다릴 것이 없어서 풀어 준다. 따로 담지 않고 세 값에서 계산하는 건 헤더 숫자와 같은 이유다.
+  const clearPending = state.cleared && !clearResult && !completeError
+
+  // 클리어 줄의 문장 아이콘. gained.crests는 개수뿐이라, 어떤 문장인지는 같은 응답의 stacks(바뀐 가방
+  // 줄)에서 찾는다. 문장을 못 받은 클리어(시간 초과)는 stacks가 비어 있으므로 crests > 0일 때만 찾는다.
+  const crestName =
+    clearResult && clearResult.gained.crests > 0
+      ? templates.stacks.find((s) => s.stackTemplateId === clearResult.stacks[0].stackTemplateId).name
+      : null
 
   const templateOf = (monster) =>
     templates.monsters.find((t) => t.monsterTemplateId === monster.monsterTemplateId)
@@ -315,7 +333,10 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
     <div className="screen">
       <div className="screen-header">
         <h1>Dungeon</h1>
-        <button type="button" onClick={onLeave}>Abandon run</button>
+        {/* 클리어한 런은 버리는 게 아니라 끝난 것이라 이름만 바꾼다. 하는 일(onLeave)은 같다. */}
+        <button type="button" onClick={onLeave} disabled={clearPending}>
+          {state.cleared ? 'Leave' : 'Abandon run'}
+        </button>
       </div>
 
       <section className="dungeon-header">
@@ -341,6 +362,23 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
         <section className="defeat">
           <span>You were defeated.</span>
           <button type="button" onClick={onRetry}>Try again</button>
+        </section>
+      )}
+
+      {/* 클리어 줄. 죽었을 때의 줄과 같은 자리·같은 모양이라, 런이 어떻게 끝났든 눈이 같은 곳으로 간다.
+          보상은 응답이 온 뒤에만 그린다 — 응답 전이나 실패했을 때는 아직 받지 못한 보상이라서다
+          (실패 이유는 위의 hint 줄이 보여 준다). */}
+      {state.cleared && (
+        <section className="cleared">
+          <span>Cleared</span>
+          {clearResult?.overtime && <span className="overtime">Overtime</span>}
+          {clearResult && <span>🪙 +{clearResult.gained.gold}</span>}
+          {crestName && (
+            <span>
+              <Icon of={crestName} className="stack-icon" /> +{clearResult.gained.crests}
+            </span>
+          )}
+          <button type="button" onClick={onRetry} disabled={clearPending}>Run again</button>
         </section>
       )}
 

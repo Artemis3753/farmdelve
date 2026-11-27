@@ -360,6 +360,20 @@ button.plot:enabled:hover {
   color: #B4402F;
 }
 
+/* 클리어했을 때 나오는 줄. 죽었을 때의 줄과 같은 모양에 색만 바꾼다. 다 큰 칸과 같은 "끝났다·받을
+   수 있다" 초록(--ready-*)을 써서 새 색을 늘리지 않는다. 글자는 붉은 줄과 달리 기본색으로 둔다 —
+   초록 변수는 반투명이라 글자에 쓰면 흐려지고, Overtime만 붉게 튀어야 눈에 띈다. */
+.cleared {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid var(--ready-border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: var(--ready-bg);
+}
+
 /* 복도. 가로 칸 수·칸 크기(48px)·틈은 Dungeon.jsx가 인라인 style로 넘긴다 — 이펙트 canvas도
    같은 숫자로 크기를 정해서, 여기 적으면 숫자가 두 파일에 생긴다. 세로 줄 수는 적지 않아도 칸이
    17개마다 다음 줄로 넘어간다. 칸이 고정 크기라 폭 상한(max-width)도 두지 않는다 — 상한이 17칸의
