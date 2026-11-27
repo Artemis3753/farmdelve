@@ -148,6 +148,9 @@ describe('createInitialState — initial layout (seam A)', () => {
     expect(state.queuedSkill).toBeNull()
     // 채널 중인 스킬도 없다.
     expect(state.channel).toBeNull()
+    // 쿨기 둘은 처음부터 쓸 수 있고(readyTick 0), 켜져 있지 않다(endTick 0).
+    expect(state.marketPriceRage).toEqual({ endTick: 0, readyTick: 0 })
+    expect(state.tilling).toEqual({ endTick: 0, readyTick: 0, x: 0, y: 0 })
   })
 })
 
@@ -294,9 +297,17 @@ describe('combatReducer — movement (seam B)', () => {
       ...refreshing,
       monsters: refreshing.monsters.map((m) => ({ ...m, hp: 10 })),
     })
+    // 쿨기 경로: 두 쿨기가 켜진 채 때리는 경로(buffed, 균열이 몬스터 칸을 덮는다).
+    const buffed = deepFreeze({
+      ...hunting,
+      marketPriceRage: { endTick: 100, readyTick: 600 },
+      tilling: { endTick: 100, readyTick: 300, x: 9, y: 4 },
+    })
     const actions = [
       { type: 'useSkill', skill: 'furiousThrust' },
       { type: 'useSkill', skill: 'whirlingSlash' },
+      { type: 'useSkill', skill: 'marketPriceRage' },
+      { type: 'useSkill', skill: 'tilling' },
       { type: 'tick' },
       { type: 'moveStart', direction: 'left' },
       // 누르는 즉시 걷는 경로(walking)와 막히는 경로(blocked)를 각각 지나게 한다.
@@ -311,7 +322,7 @@ describe('combatReducer — movement (seam B)', () => {
 
     const states = [
       walking, blocked, pulling, chasing, attacking, dying, defeated, hunting, killing,
-      queuing, queuedCast, applying, refreshing, bleedKilling,
+      queuing, queuedCast, applying, refreshing, bleedKilling, buffed,
     ]
     for (const state of states) {
       const snapshot = structuredClone(state)
@@ -1939,3 +1950,142 @@ describe('combatReducer — out-of-combat regen (seam K)', () => {
   })
 })
 
+
+// 쿨기 둘. 규칙(spec-note + 2026-11-27 J 합의): 5번 Market Price Rage는 플레이어가 주는 모든 피해 +20%,
+// 15초 지속, 쿨 60초. 6번 Tilling은 쓴 자리 주변 1칸(9칸)에 균열을 고정하고, 그 안의 적이 받는 피해 +10%,
+// 15초 지속, 쿨 30초. 둘 다 GCD를 쓰지 않고(채널 중에도 켜짐), 출혈 틱에도 틱이 나가는 순간 적용되며,
+// 같이 켜지면 곱해진다(1.2 × 1.1 = 1.32). 배율은 방어력 계산과 같이 곱하고 반올림은 마지막에 한 번만 한다.
+//
+// 정답은 손으로 뽑았다: 80 × 1.2 = 96, 40 × 1.2 = 48, 50 × 1.2 = 60, 80 × 1.1 = 88, 40 × 1.1 = 44,
+// 50 × 1.1 = 55, 80 × 1.32 = 105.6 → 106, 방어 250(× 0.8)이면 80 × 1.32 × 0.8 = 84.48 → 84.
+const useMarketPrice = (state) => combatReducer(state, { type: 'useSkill', skill: 'marketPriceRage' })
+const useTilling = (state) => combatReducer(state, { type: 'useSkill', skill: 'tilling' })
+
+describe('combatReducer — cooldowns: Market Price Rage and Tilling (seam L)', () => {
+  test('L1: a new fight starts with both cooldowns ready and neither effect on', () => {
+    const state = createInitialState(MONSTERS, [{ packNumber: 1, monsterTemplateId: 1, amount: 1 }])
+
+    expect(state.marketPriceRage).toEqual({ endTick: 0, readyTick: 0 })
+    expect(state.tilling).toEqual({ endTick: 0, readyTick: 0, x: 0, y: 0 })
+  })
+
+  test('L2: Market Price Rage lasts 150 ticks with a 600-tick cooldown, ignores the GCD and the channel, and is ignored on cooldown', () => {
+    const after = useMarketPrice(skillReady())
+    expect(after.marketPriceRage).toEqual({ endTick: 150, readyTick: 600 })
+    expect(after.gcdReadyTick).toBe(0)
+
+    // GCD가 돌고 있어도(1번 직후) 켜진다.
+    const inGcd = castFurious(skillReady())
+    expect(inGcd.gcdReadyTick).toBe(10)
+    expect(useMarketPrice(inGcd).marketPriceRage.endTick).toBe(150)
+
+    // 채널 중에도 켜지고 채널은 그대로 돈다.
+    const spinning = castSpin(spinWith([{ x: 6, y: 4 }]))
+    const buffedSpin = useMarketPrice(spinning)
+    expect(buffedSpin.marketPriceRage.endTick).toBe(150)
+    expect(buffedSpin.channel).toEqual(spinning.channel)
+
+    // 쿨 중에는 같은 객체(아무 일도 없음). 600틱이 되면 다시 쓴다.
+    expect(useMarketPrice({ ...after, tick: 599 })).toEqual({ ...after, tick: 599 })
+    expect(useMarketPrice(after)).toBe(after)
+    expect(useMarketPrice({ ...after, tick: 600 }).marketPriceRage).toEqual({ endTick: 750, readyTick: 1200 })
+  })
+
+  test('L3: while Market Price Rage is on, the auto-attack hits 48 and Furious Thrust 96; with 250 armor, 77', () => {
+    const buffed = useMarketPrice(skillReady())
+    expect(castFurious(buffed).monsters[0].hp).toBe(904)
+
+    const swinging = { ...buffed, nextPlayerAttackTick: 0 }
+    expect(runTicks(swinging, 1).monsters[0].hp).toBe(952)
+
+    // 80 × 1.2 × 0.8 = 76.8 → 77
+    const armored = { ...buffed, monsters: buffed.monsters.map((m) => ({ ...m, armor: 250 })) }
+    expect(castFurious(armored).monsters[0].hp).toBe(923)
+  })
+
+  test('L4: a bleed tick while Market Price Rage is on deals 60; after it ends, the same bleed deals 50', () => {
+    const buffed = useMarketPrice(swingWith([{ x: 6, y: 4, bleed: { endTick: 300, nextTickTick: 1 } }]))
+    expect(runTicks(buffed, 1).monsters[0].hp).toBe(940)
+
+    // 버프는 틱 150에 끝났다. 거는 순간이 아니라 틱이 나가는 순간을 본다.
+    const later = {
+      ...buffed,
+      tick: 159,
+      monsters: buffed.monsters.map((m) => ({ ...m, bleed: { endTick: 300, nextTickTick: 160 } })),
+    }
+    expect(runTicks(later, 1).monsters[0].hp).toBe(950)
+  })
+
+  test('L5: damage landing on the tick the buff ends is not boosted', () => {
+    const buffed = useMarketPrice(skillReady())
+
+    expect(castFurious({ ...buffed, tick: 149 }).monsters[0].hp).toBe(904)
+    expect(castFurious({ ...buffed, tick: 150 }).monsters[0].hp).toBe(920)
+  })
+
+  test('L6: Tilling fixes a rift on the player\'s tile for 150 ticks with a 300-tick cooldown, without the GCD', () => {
+    const after = useTilling(skillReady())
+    expect(after.tilling).toEqual({ endTick: 150, readyTick: 300, x: 9, y: 4 })
+    expect(after.gcdReadyTick).toBe(0)
+
+    expect(useTilling(after)).toBe(after)
+    const moved = { ...after, tick: 300, player: { x: 3, y: 2, facing: 'right' } }
+    expect(useTilling(moved).tilling).toEqual({ endTick: 450, readyTick: 600, x: 3, y: 2 })
+  })
+
+  test('L7: only a monster inside the rift takes 10% more; the rift stays when the player walks off', () => {
+    // 균열은 (9, 4) 주변 1칸. 몬스터는 (10, 4)라 안에 있다.
+    const tilled = useTilling(skillReady())
+    expect(castFurious(tilled).monsters[0].hp).toBe(912)
+
+    // 플레이어가 (11, 4)로 옮겨도 균열은 그대로라 몬스터는 여전히 안이다.
+    const walkedOff = { ...tilled, player: { x: 11, y: 4, facing: 'left' } }
+    expect(castFurious(walkedOff).monsters[0].hp).toBe(912)
+
+    // 몬스터가 (11, 4)로 나가면(균열 중심에서 2칸) 배율이 없다.
+    const outside = {
+      ...tilled,
+      player: { x: 12, y: 4, facing: 'left' },
+      monsters: tilled.monsters.map((m) => ({ ...m, x: 11, y: 4 })),
+    }
+    expect(castFurious(outside).monsters[0].hp).toBe(920)
+
+    // 균열이 끝난 틱(150)부터는 같은 칸이어도 배율이 없다.
+    expect(castFurious({ ...tilled, tick: 150 }).monsters[0].hp).toBe(920)
+  })
+
+  test('L8: Brutal Swing, a channel tick and a bleed tick each check the rift per monster', () => {
+    // 플레이어 (5, 4)가 왼쪽을 본다. 균열은 (3, 3) 주변 1칸이라 A(4, 4)는 안, B(4, 5)는 밖이다.
+    // 둘 다 Brutal Swing 범위(왼쪽 앞)와 채널 범위(1칸) 안이다. A가 대상이다.
+    const rifted = (state) => ({ ...state, tilling: { endTick: 150, readyTick: 300, x: 3, y: 3 } })
+    const layout = [{ x: 4, y: 4 }, { x: 4, y: 5 }]
+
+    const swing = rifted(swingWith(layout, { facing: 'left', targetId: 0 }))
+    const swung = combatReducer(swing, { type: 'useSkill', skill: 'brutalSwing' })
+    expect(hpsOf(swung)).toEqual([956, 960])
+
+    // 1c 채널: 틱 7에 한 번 돈다(A 99, B 90). 대상 A에게 걸린 출혈은 틱 20에 55.
+    const spin = castSpin(rifted(spinWith(layout, { facing: 'left', targetId: 0, rage: 10 })))
+    expect(hpsOf(runTicks(spin, 7))).toEqual([901, 910])
+    expect(hpsOf(runTicks(spin, 20))).toEqual([846, 910])
+  })
+
+  test('L9: with both on, the multipliers multiply: 106, or 84 through 250 armor', () => {
+    const both = useTilling(useMarketPrice(skillReady()))
+    expect(castFurious(both).monsters[0].hp).toBe(894)
+
+    // 반올림을 배율 뒤에 한 번 더 하면 106 × 0.8 = 84.8 → 85가 된다. 마지막에 한 번만 해야 84.
+    const armored = { ...both, monsters: both.monsters.map((m) => ({ ...m, armor: 250 })) }
+    expect(castFurious(armored).monsters[0].hp).toBe(916)
+  })
+
+  test('L10: each cooldown records a cast; one pressed on cooldown records nothing', () => {
+    const mpr = useMarketPrice(skillReady())
+    expect(mpr.events).toEqual([{ seq: 0, type: 'cast', source: 'player', ability: 'marketPriceRage' }])
+
+    const tilled = useTilling(mpr)
+    expect(tilled.events.at(-1)).toEqual({ seq: 1, type: 'cast', source: 'player', ability: 'tilling' })
+
+    expect(useTilling(tilled).events).toHaveLength(2)
+  })
+})

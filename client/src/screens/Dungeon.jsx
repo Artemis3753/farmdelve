@@ -14,7 +14,9 @@ import {
   combatReducer,
   createInitialState,
   distanceBetween,
+  inRift,
   inSwingArea,
+  COOLDOWN_SKILLS,
   CORRIDOR_HEIGHT,
   CORRIDOR_LENGTH,
   MELEE_RANGE,
@@ -37,12 +39,21 @@ const SKILL_SLOTS = [1, 2, 3, 4, 5, 6, 7]
 
 // 칸 번호 → 그 칸에 놓인 스킬. 스펙의 스킬 번호를 그대로 쓴다.
 // 칸에 마우스를 올리면 이름이 보이게 title로 쓴다.
-const SLOT_SKILLS = { 1: 'furiousThrust', 2: 'brutalSwing', 3: 'overheadSlam', 4: 'whirlingSlash' }
+const SLOT_SKILLS = {
+  1: 'furiousThrust',
+  2: 'brutalSwing',
+  3: 'overheadSlam',
+  4: 'whirlingSlash',
+  5: 'marketPriceRage',
+  6: 'tilling',
+}
 const SKILL_LABELS = {
   furiousThrust: 'Furious Thrust',
   brutalSwing: 'Brutal Swing',
   overheadSlam: 'Overhead Slam',
   whirlingSlash: 'Whirling Slash',
+  marketPriceRage: 'Market Price Rage',
+  tilling: 'Tilling',
 }
 
 // 스킬 id → 그림 팩(Ninja Adventure, CC0)의 아이콘 파일 이름. 확장자와 "Disabled"를 붙이지 않은
@@ -54,6 +65,17 @@ const SKILL_ICONS = {
   brutalSwing: 'Harvest',
   overheadSlam: 'Mine',
   whirlingSlash: 'Shuriken',
+  // 쿨기 둘(2026-11-27). 농사 게임이라 농사 쪽 그림에서 골랐다. Market Price Rage는 "작물값이 뛰어서
+  // 화가 난다"는 이름이라 금덩이(Money), Tilling은 "땅을 갈아엎어 균열을 낸다"라 땅이 솟는 그림(RockSpike)이다.
+  // RockSpike의 흙색은 복도의 균열 칸(.tile-rift) 색과도 이어진다.
+  marketPriceRage: 'Money',
+  tilling: 'RockSpike',
+}
+
+// 지금 틱에서 untilTick까지 남은 초. 스킬창의 쿨·지속 숫자에 쓴다. 올림이라 "0"은 나오지 않는다 —
+// 0.1초가 남아도 1로 보이고, 다 끝나는 틱에 숫자가 사라진다(WoW 액션바 숫자와 같은 방식).
+function secondsLeft(tick, untilTick) {
+  return Math.ceil((untilTick - tick) / TICKS_PER_SECOND)
 }
 
 // 체력 → 막대가 찰 비율(0~100%). 최대치는 부르는 쪽이 넘긴다 — 몬스터는 템플릿, 플레이어는 상태에
@@ -80,7 +102,14 @@ function MiniHpBar({ hp, max, player = false }) {
 // 분노를 쓰는 스킬. 1c도 없으면 눌러도 나가지 않아서 슬롯을 어둡게 한다.
 const SPENDER_SKILLS = ['overheadSlam', 'whirlingSlash']
 
-const KEY_SKILLS = { Digit1: 'furiousThrust', Digit2: 'brutalSwing', Digit3: 'overheadSlam', Digit4: 'whirlingSlash' }
+const KEY_SKILLS = {
+  Digit1: 'furiousThrust',
+  Digit2: 'brutalSwing',
+  Digit3: 'overheadSlam',
+  Digit4: 'whirlingSlash',
+  Digit5: 'marketPriceRage',
+  Digit6: 'tilling',
+}
 
 // 키 → 방향. 방향키와 WASD를 같이 받는다. event.key가 아니라 event.code("KeyW")를
 // 쓰는 것은, 한글 입력 상태에서는 W를 눌러도 event.key가 'ㅈ'이 되기 때문이다.
@@ -339,6 +368,11 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
       if (inside && state.channel && !isPlayer && distanceBetween({ x, y }, state.player) <= MELEE_RANGE) {
         className += ' tile-spin'
       }
+      // Tilling의 균열(3×3). 피해가 10% 더 들어가는 자리라 "몬스터를 저 안으로 끌어와야 한다"가 한눈에
+      // 보여야 한다. 진짜 그림이 오기 전까지는 CSS 무늬로 대신한다. 어느 칸인지는 규칙서의 inRift가
+      // 정한다 — 피해 계산과 같은 함수라 칠해진 칸과 실제로 세지는 칸이 어긋나지 않는다. 복도 밖은 균열이
+      // 걸쳐도 칠하지 않는다(그 칸에는 아무것도 설 수 없다).
+      if (inside && inRift(state, x, y)) className += ' tile-rift'
 
       tiles.push(
         // key는 복도 좌표(x)가 아니라 화면 좌표(col)다. 걸으면 x는 전부 바뀌지만
@@ -463,14 +497,37 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
             // 같은 속도가 나오므로, 그 시점에 밝힌다. GCD가 완전히 끝난 뒤에야 밝히면 밝아진 걸 보고
             // 누르는 사람은 반응 시간만큼 늦어서, 연타가 더 빠른 구조가 된다(2026-11-17 직접 눌러 확인).
             const skill = SLOT_SKILLS[n]
+            // 쿨기(5·6번)면 그 스킬의 { endTick, readyTick }, 아니면 null. 빈 칸(skill이 undefined)도 null이다.
+            const cooldown = COOLDOWN_SKILLS[skill] ? state[skill] : null
+            // 지속(15초)이 쿨(30·60초)보다 짧아서, 효과가 켜져 있는 동안은 언제나 쿨도 돌고 있다.
+            const active = cooldown !== null && state.tick < cooldown.endTick
+            const onCooldown = cooldown !== null && state.tick < cooldown.readyTick
             let className = 'skill-key'
             if (skill) className += ' skill-key-bound'
-            if (skill && state.gcdReadyTick - state.tick > QUEUE_WINDOW_TICKS) className += ' skill-key-gcd'
+            // 쿨기는 GCD를 쓰지 않아 GCD 중에도 바로 나간다(규칙서 castCooldown). 같이 어두워지면 "지금은
+            // 못 쓴다"로 읽혀서 누를 수 있는 순간을 놓치므로, GCD 표시에서 뺀다.
+            if (skill && !cooldown && state.gcdReadyTick - state.tick > QUEUE_WINDOW_TICKS) {
+              className += ' skill-key-gcd'
+            }
             // 스펜더는 분노가 1c도 없으면 눌러도 나가지 않으므로, GCD와 상관없이 어둡게 한다.
             // 이때는 아이콘도 팩의 회색판으로 바꾼다. 어둡게 하는 것(opacity)은 GCD와 같은 표시라
             // "곧 밝아진다"로 읽히지만, 회색은 "분노가 모자라 지금은 못 쓴다"는 다른 이유를 보여 준다.
             const noRage = SPENDER_SKILLS.includes(skill) && state.rage < RAGE_PER_POINT
             if (noRage) className += ' skill-key-gcd'
+            // 효과가 켜져 있으면 칸을 빛나게 한다. 버프와 균열은 눈에 보이는 몸체가 없어서(균열은 칸이
+            // 칠해지지만 버프는 아무 데도 안 보인다) 스킬창이 "지금 켜져 있다"를 알려 줘야 한다.
+            if (active) className += ' skill-key-active'
+
+            // 칸 가운데 숫자는 하나만 둔다. 켜져 있는 동안은 효과가 꺼질 때까지, 꺼진 뒤에는 다시 쓸 수
+            // 있을 때까지의 초다. 둘을 같이 띄우면 44px 칸에 숫자 두 개가 붙어 어느 쪽인지 헷갈린다. 어느
+            // 숫자인지는 칸이 알려 준다 — 빛나는 원래 색 칸이면 효과, 회색 칸이면 쿨이다. 숫자 색으로 나누는
+            // 것도 해 봤지만 금색 숫자가 금덩이·흙색 아이콘 위에서 묻혀서 흰색 하나로 두었다(2026-11-27 화면 확인).
+            let timer = null
+            if (active) timer = secondsLeft(state.tick, cooldown.endTick)
+            else if (onCooldown) timer = secondsLeft(state.tick, cooldown.readyTick)
+            // 회색판은 "지금 눌러도 안 나간다"는 뜻이다. 켜져 있는 동안도 쿨이라 못 누르지만, 그때 회색이면
+            // 빛나는 테두리와 반대 뜻이 한 칸에 겹친다 — 켜진 동안은 원래 색을 두고, 꺼진 뒤 쿨만 남았을 때 회색으로 바꾼다.
+            const greyIcon = noRage || (onCooldown && !active)
 
             return (
               <li key={n} className={className} title={skill ? SKILL_LABELS[skill] : undefined}>
@@ -479,9 +536,12 @@ function DungeonRun({ templates, run, onLeave, onRetry, onPlayerChange }) {
                 {skill && (
                   <img
                     className="skill-icon"
-                    src={`/art/${SKILL_ICONS[skill]}${noRage ? 'Disabled' : ''}.png`}
+                    src={`/art/${SKILL_ICONS[skill]}${greyIcon ? 'Disabled' : ''}.png`}
                     alt=""
                   />
+                )}
+                {timer !== null && (
+                  <span className="skill-key-timer">{timer}</span>
                 )}
                 {/* 칸 번호 = 누를 키. 아이콘이 칸 가운데를 차지해서 구석에 작게 둔다. */}
                 <span className="skill-key-number">{n}</span>

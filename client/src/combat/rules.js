@@ -120,6 +120,24 @@ const BLEED_CARRY_RATIO = 0.3;
 
 export const RAGE_PER_POINT = 10;
 
+// 쿨기 둘(spec-note 5·6번, 2026-11-27 구현). 지속시간과 쿨은 spec-note 값 그대로다.
+// 둘 다 GCD를 쓰지 않는다: WoW가 Shadowlands에서 순간 화력 쿨기를 GCD에서 뺀 이유와 같다 — 다음 버튼을
+// 강화하는 것 말고 아무것도 안 하는 버튼이 GCD를 먹으면 로테이션이 끊긴다. 그래서 채널 중에도 켜진다.
+// 상태는 스킬 id와 같은 이름의 객체 { endTick, readyTick }(Tilling은 균열 위치 x, y도)에 든다.
+export const COOLDOWN_SKILLS = {
+  marketPriceRage: { durationTicks: secondsToTicks(15), cooldownTicks: secondsToTicks(60) },
+  tilling: { durationTicks: secondsToTicks(15), cooldownTicks: secondsToTicks(30) },
+};
+
+// Market Price Rage는 spec-note에 "공격력 +20%"라고 적혀 있지만, 지금 공격력을 쓰는 건 자동공격뿐이고
+// 스킬은 고정 피해다. 문구대로면 평타만 세지므로 "플레이어가 주는 모든 피해 +20%"로 읽었다.
+const MARKET_PRICE_RAGE_MULTIPLIER = 1.2;
+
+// Tilling의 균열: 쓴 자리 주변 1칸(9칸)에 고정되고, 그 안의 적은 받는 피해가 10% 는다. 쓴 자리에 고정하는
+// 이유는 spec-note의 "땅에 균열을 낸다"와 특성 4b("균열 안에 서 있을 때")가 둘 다 위치를 전제해서다.
+const TILLING_MULTIPLIER = 1.1;
+const RIFT_RADIUS = 1;
+
 // Overhead Slam의 피해 곡선(2026-11-17 합의): 200 × n^0.6, n = 쓴 포인트, 반올림. 포인트를
 // 하나 더 모을 때마다 늘어나는 양이 줄어드는 오목 곡선이다. 사이클 하나는 Furious Thrust n번과
 // 스펜더 1번이라 GCD가 n + 1개 드는데, 그 GCD당 평균 피해가 3c(157)에서 가장 높고 5c(154)는
@@ -223,6 +241,10 @@ export function createInitialState(monsters, packs) {
     // 돌고 있는 채널(Whirling Slash). 없으면 null, 있으면 { ticksLeft, nextTickTick, connected }:
     // 남은 틱 수, 다음 틱이 나가는 시각, 지금까지 한 틱이라도 맞혔는가(끝날 때의 회복 조건).
     channel: null,
+    // 쿨기 둘. endTick = 효과가 끝나는 틱(지금 틱이 이보다 작으면 켜져 있다), readyTick = 다시 쓸 수 있는 틱
+    // (0이라 처음부터 쓸 수 있다). GCD의 gcdReadyTick과 같은 방식이다. 균열 위치는 쓴 순간의 플레이어 칸이다.
+    marketPriceRage: { endTick: 0, readyTick: 0 },
+    tilling: { endTick: 0, readyTick: 0, x: 0, y: 0 },
     // 복도 왼쪽 끝, 세로 가운데에서 출발한다. 1번 팩(x = 10)까지 어그로 반경
     // 5칸을 빼면 다섯 칸을 걸어야 첫 싸움이 붙는다.
     player: { x: 0, y: Math.floor(CORRIDOR_HEIGHT / 2), facing: 'right' },
@@ -426,7 +448,10 @@ function hitTarget(state, target, rawDamage, ability) {
 // ability는 사건에 적을 이름이다('autoAttack' 또는 SKILLS의 키). 사건의 amount는 방어력을 뺀 값이고,
 // 남은 hp를 넘는 초과 피해는 따로 적지 않는다 — 읽을 곳이 없다.
 function damageMonster(state, monster, rawDamage, ability) {
-  const damage = Math.round(rawDamage * (1 - monster.armor / (monster.armor + ARMOR_K)));
+  // 쿨기 배율과 방어력을 같이 곱하고 반올림은 마지막에 한 번만 한다. 중간에 반올림하면 오차가 두 번 쌓인다.
+  const damage = Math.round(
+    rawDamage * damageMultiplier(state, monster) * (1 - monster.armor / (monster.armor + ARMOR_K)),
+  );
   const hp = monster.hp - damage;
 
   const hit = record(state, { type: 'damage', source: 'player', target: monster.id, ability, amount: damage });
@@ -442,6 +467,21 @@ function damageMonster(state, monster, rawDamage, ability) {
     cleared: monsters.length === 0,
   };
 }
+
+// 지금 이 몬스터에게 들어가는 플레이어 피해 배율. 켜진 쿨기마다 곱한다(둘 다면 1.2 × 1.1 = 1.32).
+// 더하지 않고 곱하는 이유: 출처가 다른 배율이라 "같은 종류끼리는 더한다" 같은 묶음 규칙이 필요 없다.
+function damageMultiplier(state, monster) {
+  let multiplier = 1;
+  if (state.tick < state.marketPriceRage.endTick) multiplier *= MARKET_PRICE_RAGE_MULTIPLIER;
+  if (inRift(state, monster.x, monster.y)) multiplier *= TILLING_MULTIPLIER;
+  return multiplier;
+}
+
+// (x, y)가 지금 켜진 균열 안인가. 균열이 꺼져 있으면 언제나 false다. 화면도 이걸로 균열 칸을 칠한다.
+export function inRift(state, x, y) {
+  return state.tick < state.tilling.endTick && distanceBetween({ x, y }, state.tilling) <= RIFT_RADIUS;
+}
+
 
 // 대상이 죽어서 사라졌으면 어그로 붙은 가장 가까운 몬스터를 새 대상으로 잡는다(없으면 대상 없음).
 // 대상이 원래 없었거나 살아 있으면 그대로 둔다: 대상 없이 휘두른 스킬이 누군가를 죽여도 선택이
@@ -614,10 +654,13 @@ function bleedStep(state) {
 
     const { endTick, nextTickTick } = m.bleed;
     const ticks = state.tick >= nextTickTick;
-    const hp = ticks ? m.hp - BLEED_TICK_DAMAGE : m.hp;
+    // 쿨기 배율은 거는 순간이 아니라 틱이 나가는 순간에 본다(현행 WoW처럼 스냅샷 없음). 출혈마다 배율을
+    // 저장할 필요가 없고, 버프가 꺼지면 이미 걸린 출혈도 바로 약해진다.
+    const amount = Math.round(BLEED_TICK_DAMAGE * damageMultiplier(state, m));
+    const hp = ticks ? m.hp - amount : m.hp;
     if (ticks) {
       next = record(next, {
-        type: 'damage', source: 'player', target: m.id, ability: 'bleed', amount: BLEED_TICK_DAMAGE,
+        type: 'damage', source: 'player', target: m.id, ability: 'bleed', amount,
       });
     }
     if (hp <= 0) {
@@ -673,6 +716,19 @@ function channelStep(state) {
   return record(done, {
     type: 'heal', source: 'player', target: 'player', ability: 'whirlingSlash', amount: healed,
   });
+}
+
+
+// 쿨기를 켠다. 쿨 중이면 상태를 그대로 돌려준다(아무 일도 없음). GCD·채널·대상·사거리와 상관없이 켜지고
+// GCD도 시작하지 않는다. 지속이 쿨보다 짧아서(15초 < 30초·60초) 켜진 채 다시 켜는 경우는 없다.
+function castCooldown(state, skillId) {
+  if (state.tick < state[skillId].readyTick) return state;
+
+  const { durationTicks, cooldownTicks } = COOLDOWN_SKILLS[skillId];
+  const timing = { endTick: state.tick + durationTicks, readyTick: state.tick + cooldownTicks };
+  // 균열만 위치가 있다: 쓴 순간 플레이어가 선 칸.
+  const effect = skillId === 'tilling' ? { ...timing, x: state.player.x, y: state.player.y } : timing;
+  return { ...record(state, { type: 'cast', source: 'player', ability: skillId }), [skillId]: effect };
 }
 
 
@@ -740,6 +796,8 @@ export function combatReducer(state, action) {
     // 끝나는 틱에 쓴다(마지막에 누른 것이 이긴다). 그보다 일찍 누른 입력은 버린다. 모르는 스킬 id는
     // castSkill이 걸러서 아무 일도 없다.
     case 'useSkill': {
+      // 쿨기는 GCD를 보기 전에 먼저 처리한다 — GCD 중에도 켜지고, 미리 눌러 두는 대기열도 쓰지 않는다.
+      if (COOLDOWN_SKILLS[action.skill]) return castCooldown(state, action.skill);
       const ticksLeft = state.gcdReadyTick - state.tick;
       if (ticksLeft <= 0) return castSkill(state, action.skill);
       if (ticksLeft <= QUEUE_WINDOW_TICKS) return { ...state, queuedSkill: action.skill };
