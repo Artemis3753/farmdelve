@@ -197,6 +197,9 @@ export function createInitialState(monsters, packs) {
     playerMaxHp: PLAYER_MAX_HP,
     // 체력이 0이 되면 true. 그 뒤로는 전투가 멈춘다(백로그: 죽으면 "try again"만).
     defeated: false,
+    // 마지막 몬스터가 죽으면 true. defeated와 같이 그 뒤로는 전투가 멈추고, 화면은 이걸 보고 서버에
+    // 클리어를 알린다. 몬스터가 0마리인 빈 복도로 시작해도 false다 — 이동 테스트가 빈 복도를 쓴다.
+    cleared: false,
     // 자동공격 대상(몬스터 id). 없으면 null. 플레이어가 클릭으로 고르고, 대상이 죽으면 규칙이
     // 다음 대상을 고른다.
     targetId: null,
@@ -419,9 +422,13 @@ function damageMonster(state, monster, rawDamage, ability) {
   if (hp > 0) {
     return { ...hit, monsters: state.monsters.map((m) => (m.id === monster.id ? { ...m, hp } : m)) };
   }
+  // 몬스터를 지우는 곳이 여기와 bleedStep 둘이라 클리어 판정도 두 곳에 있다(defeated가 체력이 0이
+  // 되는 자리에서 정해지는 것과 같은 방식). 키 입력으로 죽여도 틱을 기다리지 않고 바로 켜진다.
+  const monsters = state.monsters.filter((m) => m.id !== monster.id);
   return {
     ...record(hit, { type: 'death', target: monster.id }),
-    monsters: state.monsters.filter((m) => m.id !== monster.id),
+    monsters,
+    cleared: monsters.length === 0,
   };
 }
 
@@ -614,7 +621,8 @@ function bleedStep(state) {
     monsters.push({ ...m, hp, bleed });
   }
 
-  return retargetIfLost({ ...next, monsters });
+  // 출혈로 마지막 몬스터가 죽어도 클리어다. damageMonster를 거치지 않으니 여기서도 판정한다.
+  return retargetIfLost({ ...next, monsters, cleared: monsters.length === 0 });
 }
 
 
@@ -686,8 +694,8 @@ function advanceCombat(state) {
 // React는 "객체가 바뀌었나"를 === 로 보고 다시 그릴지 정하기 때문에, 원래 객체를
 // 고쳐서 돌려주면 바뀐 것을 못 알아채고 화면이 그대로 남는다.
 export function combatReducer(state, action) {
-  // 죽은 뒤에는 아무 일도 일어나지 않는다. 같은 객체를 돌려줘서 화면도 다시 안 그린다.
-  if (state.defeated) return state;
+  // 죽은 뒤나 클리어한 뒤에는 아무 일도 일어나지 않는다. 같은 객체를 돌려줘서 화면도 다시 안 그린다.
+  if (state.defeated || state.cleared) return state;
 
   switch (action.type) {
     // 시간이 한 틱 흐르고, 플레이어는 걸음 간격이 지났으면 한 걸음 간다. 그 뒤에

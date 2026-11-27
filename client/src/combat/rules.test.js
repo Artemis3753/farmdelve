@@ -1806,3 +1806,70 @@ describe('combatReducer — combat events (seam I)', () => {
     ])
   })
 })
+
+
+// 던전 클리어. 규칙(2026-11-27 합의): 1단은 잡몹만 다 잡으면 클리어다(보스 없음). 마지막 몬스터가
+// 죽는 순간 cleared가 켜지고, 그 뒤로는 defeated처럼 아무 일도 일어나지 않는다. 몬스터를 지우는
+// 곳이 둘(damageMonster, bleedStep)이고 시점도 둘(틱, 키 입력)이라 경로마다 케이스를 하나씩 둔다.
+
+describe('combatReducer — dungeon clear (seam J)', () => {
+  test('J1: a new fight starts uncleared, even an empty corridor with no monsters', () => {
+    const state = createInitialState(MONSTERS, [{ packNumber: 1, monsterTemplateId: 1, amount: 1 }])
+    expect(state.cleared).toBe(false)
+
+    // 몬스터가 0마리여도 클리어가 아니다 — 이동 테스트가 빈 복도에서 돈다.
+    expect(emptyCorridor().cleared).toBe(false)
+  })
+
+  test('J2: an auto-attack that kills the last monster clears the run; killing one of two does not', () => {
+    // hp 40은 평타 한 방(40)이다.
+    const last = runTicks(huntingOne(40, 9, 4), 1)
+    expect(last.monsters).toHaveLength(0)
+    expect(last.cleared).toBe(true)
+
+    // 대상(hp 10)만 죽고 멀리 있는 한 마리는 남는다.
+    const oneLeft = runTicks(huntWith([
+      { x: 6, y: 4, hp: 10, aggro: true },
+      { x: 9, y: 4, hp: 100, aggro: true },
+    ]), 1)
+    expect(oneLeft.monsters).toHaveLength(1)
+    expect(oneLeft.cleared).toBe(false)
+  })
+
+  test('J3: a bleed tick that kills the last monster clears the run; killing one of two does not', () => {
+    // 출혈 틱(50)이 틱 1에 나가게 걸어 둔다. 대상이 없고 평타·몬스터 공격은 틱 1000으로 미뤄져서
+    // 죽이는 것은 출혈뿐이다.
+    const bleeding = { endTick: 60, nextTickTick: 1 }
+
+    const last = runTicks(swingWith([{ x: 6, y: 4, hp: 50, bleed: bleeding }]), 1)
+    expect(last.monsters).toHaveLength(0)
+    expect(last.cleared).toBe(true)
+
+    const oneLeft = runTicks(swingWith([
+      { x: 6, y: 4, hp: 50, bleed: bleeding },
+      { x: 6, y: 3 },
+    ]), 1)
+    expect(oneLeft.monsters).toHaveLength(1)
+    expect(oneLeft.cleared).toBe(false)
+  })
+
+  test('J4: a skill key that kills the last monster clears the run at once, with no tick', () => {
+    // Furious Thrust 80, 방어력 0. 틱을 흘리지 않고 키만 누른다.
+    const after = castFurious(skillReady(80))
+
+    expect(after.tick).toBe(0)
+    expect(after.monsters).toHaveLength(0)
+    expect(after.cleared).toBe(true)
+  })
+
+  test('J5: once cleared, a tick, moving, selecting and a skill all return the same object', () => {
+    const cleared = castFurious(skillReady(80))
+
+    // 같은 객체를 그대로 돌려받아야 한다(아무 일도 일어나지 않았다는 뜻, D6과 같은 모양).
+    expect(combatReducer(cleared, { type: 'tick' })).toBe(cleared)
+    expect(combatReducer(cleared, { type: 'moveStart', direction: 'left' })).toBe(cleared)
+    expect(combatReducer(cleared, { type: 'moveStop', direction: 'left' })).toBe(cleared)
+    expect(combatReducer(cleared, { type: 'selectTarget', monsterId: 0 })).toBe(cleared)
+    expect(castFurious(cleared)).toBe(cleared)
+  })
+})

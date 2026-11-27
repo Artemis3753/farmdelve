@@ -12,7 +12,7 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   player's auto-attack, targets and kills (seam E), skills, Rage and the GCD
   (seam F), and the Whirling Slash channel (seam G, split from F because it adds a
   timed state, `channel`), and the Whirling Slash bleed (seam H, a second timed state,
-  `bleed` on each monster). The screen (`Dungeon.jsx`) is not a seam: it is a thin
+  `bleed` on each monster), and the dungeon clear (seam J, 2026-11-27). The screen (`Dungeon.jsx`) is not a seam: it is a thin
   layer that dispatches actions and draws the state, and it was checked by hand in
   the browser.
 - **Every case below except H13–H15 was approved by the author** before it was written, in ten
@@ -30,6 +30,8 @@ file is `client/src/combat/rules.test.js`; run it with `npm test` in `client/`.
   which gained a distance-2 case and an exact-zero-health case for the same reason.
   G8, G9 and G12 also had their expected hit points lowered (by the 50 of the bleed
   tick the new rule adds), because they cast Whirling Slash on a target in range.
+- **J1–J5 were approved by the author** on 2026-11-27, together with the clear rules
+  below.
 - **The test code was written by Claude** from that list.
 - **The rule changes were decided by the author**: a key press steps at once, the
   aggro rules, the attack rules, and the targeting rules below. Claude changed
@@ -242,6 +244,24 @@ what happened, the way the WoW combat log does next to the game state.
   death comes right after the damage that caused it. The Whirling Slash heal records what
   was actually restored, and nothing when that is 0.
 
+## Dungeon clear rules (decided 2026-11-27)
+
+A tier 1 run is cleared on trash: killing the last of its monsters clears it (no boss).
+The server pays the reward when the screen reports the clear, so the rules need a flag the
+screen can watch, the same way it watches `defeated`.
+
+- **Shape** (the author's choice): `cleared`, a boolean next to `defeated`.
+- **Where it is set** (the author's choice): at the two places that remove a dead
+  monster, `damageMonster` (auto-attack and every skill) and `bleedStep` (the bleed ignores
+  armor, so it removes monsters itself). This is how `defeated` is set, where the player's
+  health hits 0. It turns on the moment the last monster dies, on a tick or on a key press.
+  The cost is that the same check lives in two places, so a new way to kill a monster must
+  set it too.
+- **After a clear** (the author's choice): nothing happens any more, like after a defeat.
+  The reducer returns the same object, so no events follow the clear.
+- A new fight is not cleared, even an empty corridor with no monsters: the movement tests
+  use one.
+
 ## Cases
 
 ### A. Initial layout — `createInitialState`
@@ -394,6 +414,16 @@ the bleed ticks (their comments say how many).
 | I11 | A player killed by a monster records death after the damage | The defeat effect | — |
 | I12 | A skill remembered in the GCD records nothing when pressed, and cast and damage when it fires | The event belongs to the moment the skill goes | — |
 
+### J. Dungeon clear — `combatReducer`
+
+| ID | Behavior | Why it is needed | What it does not catch |
+|----|----------|------------------|------------------------|
+| J1 | A new fight starts with `cleared: false`, even an empty corridor | The starting point; the movement tests run in an empty corridor | — |
+| J2 | An auto-attack that kills the last monster clears the run; killing one of two does not | The `damageMonster` path, on a tick | — |
+| J3 | A bleed tick that kills the last monster clears the run; killing one of two does not | The `bleedStep` path | — |
+| J4 | A skill key that kills the last monster clears the run at once, with no tick | The key-press path | — |
+| J5 | Once cleared, a tick, moving, selecting and a skill all return the same object | Nothing may happen after the clear | — |
+
 ## Movement rule change (2026-11-17)
 
 The author changed the rule from "the first step comes on the next tick" to "a key
@@ -414,7 +444,7 @@ rows against the refactored hit code. The Whirling Slash slice added 41 more: 38
 rows and 3 re-runs. The Whirling Slash bleed slice added 40 more (all new rows): 39 were caught
 and one survived because it was dead code, which was removed (see below). Counting the 197 before
 the bleed, all 236 breakages of live code were caught, and `rules.js` was restored after every run.
-The combat events slice added 21 more (all new rows, listed last), and all were caught: 257 in total. The test lists in the first 91 rows
+The combat events slice added 21 more (all new rows), and all were caught: 257 in total. The dungeon clear slice added 8 more (all new rows, listed last), and all were caught: 265 in total. The test lists in the first 91 rows
 are from before the Slam, Swing, Whirling Slash and bleed tests existed, so they do not name
 F11–F26, G1–G12 or H1–H15.
 
@@ -726,6 +756,19 @@ Combat events (2026-11-26):
 | A heal of 0 is recorded | I7, I8, I10 |
 | Walking clears the events | I5 |
 | Death recorded before the damage | I9 |
+
+Dungeon clear (2026-11-27):
+
+| Breakage | Caught by |
+|----------|-----------|
+| A new fight starts cleared | J1, and almost every test that ticks |
+| A kill by a hit never clears | J2, J4, J5 |
+| A kill by a hit always clears | J2 |
+| A kill by a hit clears with one monster left | J2 |
+| A kill by a bleed never clears | J3 |
+| Any bleed tick clears, kill or not | J3, and the G, H and I tests that bleed |
+| The bleed step drops the clear check | J3 |
+| The reducer keeps running after a clear | J5 |
 
 The 40th breakage removed the line that stopped a bleed from ticking once its next tick time
 is past its end. It survived because the line could never matter: when the next tick time is
