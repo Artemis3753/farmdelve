@@ -39,6 +39,14 @@ export const MELEE_RANGE = 1;
 // 2026-11-27 1000 → 2000(J): 첫 22마리 런에서 체력이 모자라 죽어서 일단 올렸다. 백로그 수치는 아직 1000이다.
 const PLAYER_MAX_HP = 2000;
 
+// 전투 밖 회복(2026-11-27, J): 어그로 붙은 몬스터가 하나도 살아 있지 않으면 초당 최대 체력의 5%가 찬다.
+// 솔로라 힐러가 없고 포션도 아직 없어서, 회복 수단이 0이면 22마리 동안 받은 피해가 쌓이기만 했다.
+// 규칙은 백로그(2026-09-30)에 초당 20%로 있었는데, 그 속도면 팩 사이 5초 걷기에 다 차서 쉴지 고민할 일이
+// 없다. 그래서 5%로 낮췄다. 속도는 WoW Recuperate(전투 밖 30초에 150%)와 같다. 쉬는 동안에도 런 타이머는 흐르니 "쉴까, 그냥 갈까"가
+// 기록과 안전의 맞교환이 된다. 기다리는 시간 없이 바로 차는 이유: 어그로는 죽을 때까지 풀리지 않아서
+// 싸우는 도중에 회복을 끼워 넣을 틈이 원래 없다.
+const REST_HEAL_PER_SECOND = 0.05;
+
 // 플레이어 자동공격(2026-11-17, 숫자는 전부 잠정이고 나중에 조정한다). 백로그는 "무기 종류의
 // 고정 속도, medium"이라고만 하고 값을 정하지 않았다.
 //
@@ -666,6 +674,16 @@ function channelStep(state) {
 }
 
 
+// 전투 밖이면 체력을 한 틱만큼 채운다(최대 체력까지). 어그로를 붙인 바로 다음에 불려서, 새 팩에 들어선
+// 틱에는 차지 않는다. 몬스터를 죽이는 단계들보다 앞이라, 마지막 몬스터가 죽은 틱에도 차지 않고 다음 틱부터
+// 찬다. 회복 사건은 남기지 않는다 — 매 틱 +10이 뜨면 화면이 지저분해서, HP바가 차오르는 것으로 충분하다.
+function regenStep(state) {
+  if (state.monsters.some((m) => m.aggro)) return state;
+  const heal = Math.round((state.playerMaxHp * REST_HEAL_PER_SECOND) / TICKS_PER_SECOND);
+  return { ...state, playerHp: Math.min(state.playerMaxHp, state.playerHp + heal) };
+}
+
+
 // GCD 중에 기억해 둔 스킬을 GCD가 끝나는 틱에 쓴다. 그 순간 쓸 수 없으면(대상이 사라졌거나
 // 사거리 밖) 조용히 버리고 GCD도 쓰지 않는다. 몬스터에게 죽은 플레이어는 쓰지 못한다.
 function queuedSkillStep(state) {
@@ -685,7 +703,7 @@ function queuedSkillStep(state) {
 // 공격은 걸음과 달리 각자 자기 타이머를 쓴다 — 팩이 한꺼번에 때리면 피해가 몰린다.
 // 몬스터 공격이 플레이어 공격보다 먼저라서, 죽어 가는 몬스터도 마지막 한 대는 때리고 간다.
 function advanceCombat(state) {
-  const pulled = pullPacks(state);
+  const pulled = regenStep(pullPacks(state));
   const chased = pulled.tick % MOVE_TICKS === 0 ? chaseStep(pulled) : pulled;
   return playerAttackStep(queuedSkillStep(bleedStep(channelStep(attackStep(chased)))));
 }

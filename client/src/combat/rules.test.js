@@ -1293,8 +1293,9 @@ describe('combatReducer — Whirling Slash channel (seam G)', () => {
     expect(runTicks(castSpin(hurt(1990)), 14).playerHp).toBe(2000)
     expect(runTicks(castSpin(hurt(2000)), 14).playerHp).toBe(2000)
 
-    // 한 틱도 못 맞혔으면 회복이 없다(범위 안에 아무도 없다).
-    expect(runTicks(castSpin(hurt(500, [])), 14).playerHp).toBe(500)
+    // 한 틱도 못 맞혔으면 회복이 없다(범위 안에 아무도 없다). 몬스터를 아예 빼면 전투 밖 회복(seam K)이
+    // 끼어들어서, 25칸 밖에 어그로 몬스터 한 마리를 두어 전투 중으로 남긴다(14틱 동안 두 걸음만 다가온다).
+    expect(runTicks(castSpin(hurt(500, [{ x: 30, y: 4 }])), 14).playerHp).toBe(500)
 
     // 첫 틱만 맞고 둘째 틱은 빗나가도(적이 멀리 감) 한 틱이 맞았으니 회복한다.
     const first = runTicks(castSpin(hurt(500)), 7)
@@ -1873,3 +1874,68 @@ describe('combatReducer — dungeon clear (seam J)', () => {
     expect(castFurious(cleared)).toBe(cleared)
   })
 })
+
+
+// 전투 밖 회복. 규칙(2026-11-27 J 합의): 어그로 붙은 몬스터가 하나도 살아 있지 않으면 매 틱
+// 최대 체력의 0.5%가 찬다(초당 5%, WoW Recuperate의 30초 150%와 같은 속도). 최대 체력은 넘지 않는다.
+// 한 틱 안에서는 어그로를 붙인 다음에 본다 — 새 팩에 들어선 그 틱에는 차지 않는다.
+//
+// 정답은 최대 체력 2000 × 5% ÷ 10틱 = 틱당 10에서 손으로 뽑았다.
+describe('combatReducer — out-of-combat regen (seam K)', () => {
+  // 1번 팩 한 마리는 x 10 근처에서 자고 있고 플레이어는 (0, 4)에서 시작한다 — 5칸 밖이라 깨지 않는다.
+  function restingAt(hp) {
+    const base = createInitialState(MONSTERS, [{ packNumber: 1, monsterTemplateId: 1, amount: 1 }])
+    return { ...base, playerHp: hp }
+  }
+
+  test('K1: with only sleeping monsters, health rises by 10 a tick (100 a second)', () => {
+    const state = restingAt(1000)
+
+    const oneTick = runTicks(state, 1)
+    expect(oneTick.playerHp).toBe(1010)
+    expect(oneTick.monsters[0].aggro).toBe(false)
+
+    expect(runTicks(state, 10).playerHp).toBe(1100)
+  })
+
+  test('K2: while one aggroed monster is alive, health does not rise, even out of its reach', () => {
+    // 10칸 떨어진 어그로 몬스터. 공격은 1000틱으로 미뤄 두었으니 체력이 바뀔 이유는 회복뿐이다.
+    const state = { ...swingWith([{ x: 15, y: 4 }]), playerHp: 1000 }
+
+    expect(runTicks(state, 1).playerHp).toBe(1000)
+  })
+
+  test('K3: health stops at the maximum', () => {
+    expect(runTicks(restingAt(1995), 1).playerHp).toBe(2000)
+    expect(runTicks(restingAt(2000), 1).playerHp).toBe(2000)
+  })
+
+  test('K4: on the tick a pack wakes up, health does not rise', () => {
+    // 잠든 몬스터가 정확히 5칸(어그로 반경)에 있다. 이번 틱에 깨어난다.
+    const state = { ...swingWith([{ x: 10, y: 4, aggro: false }]), playerHp: 1000 }
+
+    const after = runTicks(state, 1)
+    expect(after.monsters[0].aggro).toBe(true)
+    expect(after.playerHp).toBe(1000)
+  })
+
+  test('K5: on the tick the last aggroed monster dies, health does not rise; it rises from the next tick', () => {
+    // 대상(hp 40)은 평타 한 방에 죽는다. 25칸 밖의 잠든 몬스터가 남아 있어서 클리어가 아니다 —
+    // 클리어면 리듀서가 멈춰서 "다음 틱"을 볼 수 없다.
+    const state = {
+      ...huntWith([
+        { x: 6, y: 4, hp: 40, aggro: true, nextAttackTick: 1000 },
+        { x: 30, y: 4, aggro: false },
+      ]),
+      playerHp: 1000,
+    }
+
+    const killTick = runTicks(state, 1)
+    expect(killTick.monsters).toHaveLength(1)
+    expect(killTick.cleared).toBe(false)
+    expect(killTick.playerHp).toBe(1000)
+
+    expect(runTicks(killTick, 1).playerHp).toBe(1010)
+  })
+})
+
