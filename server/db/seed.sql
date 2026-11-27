@@ -180,6 +180,12 @@ FROM (VALUES
 --     엘리트는 광역 뒤에 절반이 남아 단일 마무리를 만들고, 원거리는 걸어가서 벨
 --     만한 값이다.
 --
+--     2026-11-27 체력을 전부 절반으로 내렸다(J). 위 계산은 완벽한 플레이(DPS 100)를
+--     전제해서, 팩을 하나씩 잡으면 305초로 제한 5분을 이미 넘었다 — 1단부터 완벽한
+--     체인풀링을 요구한 셈이다. 손으로 한 첫 22마리 런의 처치 속도가 이론치의 약 55%였고,
+--     1단은 쉬지 않고 체인풀링해도 무리 없이 깨지는 입문 난이도여야 해서 그 비율에 맞췄다.
+--     비율이 그대로라 엘리트의 "광역 뒤 절반 남음"과 방어 250의 의미는 안 바뀐다.
+--
 --     엘리트 둘만 방어가 있다. 체력 1600에 방어 250(피해 감소 20%)이면 유효 체력은
 --     2000 그대로라 처치 시간은 안 바뀌고, 출혈(방어 무시)이 엘리트에게만 더 잘
 --     드는 차이가 생긴다. 스웜·원거리까지 방어를 주면 출혈이 모든 대상에서 같은
@@ -197,10 +203,10 @@ FROM (VALUES
 --     보스는 아직 없다. 기믹 둘이 보류라 넣을 수치가 없다.
 INSERT INTO monster_template (name, hp, armor, auto_attack, auto_attack_interval)
 VALUES
-  ('Field Rat',   1000,   0, 10, INTERVAL '2 seconds'),  -- 스웜
-  ('Thresher',    1600, 250, 20, INTERVAL '2 seconds'),  -- 엘리트 A, 회전
-  ('Blight Slug', 1600, 250, 20, INTERVAL '2 seconds'),  -- 엘리트 B, 장판
-  ('Seedspitter', 1500,   0, 10, INTERVAL '2 seconds');  -- 원거리, 일제사격
+  ('Field Rat',    500,   0, 10, INTERVAL '2 seconds'),  -- 스웜
+  ('Thresher',     800, 250, 20, INTERVAL '2 seconds'),  -- 엘리트 A, 회전
+  ('Blight Slug',  800, 250, 20, INTERVAL '2 seconds'),  -- 엘리트 B, 장판
+  ('Seedspitter',  750,   0, 10, INTERVAL '2 seconds');  -- 원거리, 일제사격
 
 
 -- 9. The Fallow Deep의 팩 구성 — 8팩 22마리, 14행. 백로그 §1 Pack layout and

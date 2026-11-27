@@ -51,7 +51,7 @@ const REST_HEAL_PER_SECOND = 0.05;
 // 고정 속도, medium"이라고만 하고 값을 정하지 않았다.
 //
 // 한 번에 주는 피해 = 공격력 × 계수. 공격력 10은 시작 낫의 자리표시 값(백로그 Still open)이다.
-// 스킬이 붙기 전이라 자동공격만으로 쥐 한 마리(hp 1000)를 잡는 데 50초가 걸린다.
+// 자동공격만으로는 쥐 한 마리(hp 500, 2026-11-27 절반으로 내림)를 잡는 데 25초가 걸린다.
 const PLAYER_ATTACK_POWER = 10;
 const AUTO_ATTACK_COEFFICIENT = 4;
 const PLAYER_ATTACK_TICKS = 2 * TICKS_PER_SECOND;
